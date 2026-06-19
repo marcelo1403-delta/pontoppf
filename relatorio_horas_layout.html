@@ -1,0 +1,632 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Relatório de Horas</title>
+<style>
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    background:#e5e7eb;
+    font-family:Arial,Helvetica,sans-serif;
+    padding:20px;
+    color:#071a36;
+  }
+
+  :root{
+    --navy:#062446;
+    --navy2:#0b2f5d;
+    --line:#06172e;
+    --soft:#eaf2fb;
+    --weekend:#ef4444;
+  }
+
+  .page{
+    width:737px;
+    height:973.5px;
+    margin:0 auto;
+    background:#fff;
+    position:relative;
+    overflow:hidden;
+    padding:2mm;
+    border:0.5px solid #111;
+  }
+
+  .report{
+    width:100%;
+    height:100%;
+    font-family:Arial,Helvetica,sans-serif;
+  }
+
+  .title{
+    width:679px;
+    margin-left:auto;
+    margin-right:auto;
+    height:70px;
+    background:linear-gradient(135deg,var(--navy),var(--navy2));
+    color:#fff;
+    border-radius:7px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    font-size:38px;
+    font-weight:900;
+    letter-spacing:2px;
+    text-transform:uppercase;
+    margin-bottom:8px;
+  }
+
+  .competencia{
+    width:679px;
+    margin-left:auto;
+    margin-right:auto;
+    height:48px;
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    gap:14px;
+    margin-bottom:8px;
+  }
+
+  .comp-card{
+    height:38px;
+    border:1px solid var(--line);
+    border-radius:7px;
+    display:flex;
+    align-items:center;
+    gap:10px;
+    padding:0 18px;
+    font-weight:900;
+    font-size:20px;
+    background:#fff;
+    min-width:210px;
+  }
+
+  .comp-card.ano{min-width:140px}
+
+  .comp-label{
+    color:#071a36;
+    text-transform:uppercase;
+  }
+
+  .comp-value{
+    font-size:20px;
+    color:#000;
+    border-bottom:0;
+    min-width:82px;
+    text-align:center;
+    line-height:1;
+    padding-bottom:3px;
+    font-weight:900;
+  }
+
+  .formulario{
+    width:679px;
+    margin-left:auto;
+    margin-right:auto;
+    border:1px solid var(--line);
+    border-radius:5px;
+    overflow:hidden;
+    margin-bottom:8px;
+  }
+
+  .form-row{
+    display:grid;
+    border-bottom:1px solid var(--line);
+  }
+
+  .form-row:last-child{border-bottom:0}
+
+  .r1{grid-template-columns:67% 33%}
+  .r2{grid-template-columns:1fr 1fr 1fr}
+
+  .field{
+    height:50px;
+    border-right:1px solid var(--line);
+    padding:7px 10px 4px;
+    overflow:hidden;
+  }
+
+  .field:last-child{border-right:0}
+
+  .field label{
+    display:block;
+    font-size:15px;
+    line-height:1;
+    font-weight:900;
+    text-transform:uppercase;
+    margin-bottom:8px;
+  }
+
+  .field .value{
+    display:block;
+    width:100%;
+    height:22px;
+    border-bottom:0;
+    font-size:16px;
+    font-weight:800;
+    line-height:18px;
+    color:#000;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    padding-bottom:4px;
+  }
+
+  .table-wrap{
+    width:679px;
+    position:relative;
+    margin:0 auto;
+  }
+
+  table{
+    width:679px;
+    border-collapse:collapse;
+    table-layout:fixed;
+    border:1px solid var(--line);
+    color:#000;
+  }
+
+  col.c-dia{width:40px}
+  col.c-hora{width:90px}
+  col.c-total{width:90px}
+  col.c-gap{width:3px}
+
+  th,td{
+    border:1px solid var(--line);
+    text-align:center;
+    vertical-align:middle;
+    padding:0;
+  }
+
+  thead tr.head1 th{
+    height:31px;
+    background:linear-gradient(135deg,var(--navy),var(--navy2));
+    color:#fff;
+    font-size:15px;
+    font-weight:900;
+    text-transform:uppercase;
+    -webkit-print-color-adjust:exact;
+    print-color-adjust:exact;
+  }
+
+  thead tr.head2 th{
+    height:25px;
+    background:#e7eff8;
+    color:#071a36;
+    font-size:13px;
+    font-weight:900;
+    text-transform:uppercase;
+    -webkit-print-color-adjust:exact;
+    print-color-adjust:exact;
+  }
+
+  tbody td{
+    height:20px;
+    font-size:16px;
+    font-weight:800;
+    padding-bottom:2px;
+  }
+
+  tbody td.day-cell{
+    font-size:13px;
+    font-weight:900;
+    color:#000;
+    white-space:nowrap;
+  }
+
+  tbody tr.weekend td,
+  tbody tr.holiday td{
+    background:#fff1f2 !important;
+    color:#dc2626;
+    -webkit-print-color-adjust:exact;
+    print-color-adjust:exact;
+  }
+  tbody tr.weekend td.day-cell,
+  tbody tr.holiday td.day-cell{
+    color:#dc2626;
+  }
+
+  tbody td.time{
+    font-size:16px;
+    font-weight:800;
+  }
+
+  tbody td.total{
+    font-size:16px;
+    font-weight:900;
+  }
+
+  tbody td.negative,
+  tfoot td.negative{
+    color:#dc2626 !important;
+    -webkit-print-color-adjust:exact;
+    print-color-adjust:exact;
+  }
+
+  .gap-col{
+    width:3px !important;
+    min-width:3px !important;
+    max-width:3px !important;
+    background:#fff !important;
+    border-left:1px solid var(--line) !important;
+    border-right:1px solid var(--line) !important;
+    border-top:0 !important;
+    border-bottom:0 !important;
+    padding:0 !important;
+  }
+
+
+  tfoot td{
+    height:28px;
+    background:#e7eff8;
+    color:#071a36;
+    font-size:18px;
+    font-weight:900;
+    text-transform:uppercase;
+    padding-bottom:3px;
+    -webkit-print-color-adjust:exact;
+    print-color-adjust:exact;
+  }
+
+  tfoot td.total-value{
+    color:#000;
+    font-size:20px;
+  }
+
+  .totais-label{
+    text-align:left !important;
+    padding-left:12px !important;
+  }@media print{
+    @page{size:A4 portrait;margin:20mm 5mm 10mm 10mm}
+    html,body{width:auto;height:auto;overflow:hidden}
+    body{padding:0;background:white;margin:0}
+    .page{
+      margin:0 auto !important;
+      width:737px;
+      height:973.5px;
+      break-inside:avoid;
+      page-break-inside:avoid;
+      page-break-after:avoid;
+      overflow:hidden;
+    }
+  }
+.table-gap{height:18px}
+
+/* ===== AJUSTE FINAL DE ALTURA: 31 DIAS + TOTAIS VISÍVEIS ===== */
+.title{
+  height:50px !important;
+  font-size:30px !important;
+  margin-bottom:6px !important;
+}
+.competencia{
+  height:38px !important;
+  margin-bottom:6px !important;
+}
+.comp-card{
+  height:32px !important;
+  font-size:15px !important;
+}
+.comp-value{
+  font-size:18px !important;
+}
+.formulario{
+  margin-bottom:0 !important;
+}
+.field{
+  height:42px !important;
+  padding:5px 8px 3px !important;
+}
+.field label{
+  font-size:12px !important;
+  margin-bottom:4px !important;
+}
+.field .value{
+  height:17px !important;
+  line-height:17px !important;
+  font-size:14px !important;
+  padding-bottom:2px !important;
+}
+.table-gap{
+  height:18px !important;
+}
+thead tr.head1 th{
+  height:24px !important;
+  font-size:13px !important;
+}
+thead tr.head2 th{
+  height:19px !important;
+  font-size:10px !important;
+}
+tbody td{
+  height:18px !important;
+  font-size:14px !important;
+  padding-bottom:1px !important;
+}
+tbody td.day-cell{
+  font-size:12px !important;
+}
+tbody td.time,
+tbody td.total{
+  font-size:14px !important;
+}
+tfoot td{
+  height:22px !important;
+  font-size:14px !important;
+  padding-bottom:1px !important;
+}
+tfoot td.total-value{
+  font-size:15px !important;
+}
+
+
+  tbody td.gap-col,
+  thead th.gap-col,
+  tfoot td.gap-col{
+    border-top:0 !important;
+    border-bottom:0 !important;
+  }
+
+.report-toolbar{
+  width:737px;
+  margin:0 auto 8px;
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:10px;
+}
+.report-toolbar button{
+  height:36px;
+  border:0;
+  border-radius:10px;
+  background:#0756c9;
+  color:#fff;
+  font-weight:900;
+  cursor:pointer;
+}
+.report-toolbar .back{
+  background:#475569;
+}
+@media print{
+  .report-toolbar{display:none!important}
+}
+
+
+/* Compactação de segurança para caber 31 dias + totais */
+@media print{
+  thead tr.head1 th{height:22px!important}
+  thead tr.head2 th{height:18px!important}
+  tbody td{height:17px!important; font-size:13px!important}
+  tfoot td{height:20px!important; font-size:13px!important}
+}
+
+</style>
+</head>
+<body>
+<div class="report-toolbar">
+  <button class="back" onclick="try{window.close()}catch(e){}; setTimeout(()=>history.back(),80)">← VOLTAR</button>
+  <button onclick="window.print()">🖨 IMPRIMIR</button>
+</div>
+
+  <div class="page">
+    <main class="report">
+      <section class="title">RELATÓRIO DE HORAS</section>
+
+      <section class="competencia">
+        <div class="comp-card">
+          <span class="comp-label">MÊS:</span>
+          <span class="comp-value" id="rh-mes">JUNHO</span>
+        </div>
+        <div class="comp-card ano">
+          <span class="comp-label">ANO:</span>
+          <span class="comp-value" id="rh-ano">2026</span>
+        </div>
+      </section>
+
+      <section class="formulario">
+        <div class="form-row r1">
+          <div class="field">
+            <label>NOME:</label>
+            <span class="value" id="rh-nome">JOÃO SILVA</span>
+          </div>
+          <div class="field">
+            <label>CPF:</label>
+            <span class="value" id="rh-cpf">123.456.789-00</span>
+          </div>
+        </div>
+        <div class="form-row r2">
+          <div class="field">
+            <label>MATRÍCULA SIAPE:</label>
+            <span class="value" id="rh-matricula">1234567</span>
+          </div>
+          <div class="field">
+            <label>CARGO EFETIVO:</label>
+            <span class="value" id="rh-cargo">POLICIAL PENAL FEDERAL</span>
+          </div>
+          <div class="field">
+            <label>LOTAÇÃO:</label>
+            <span class="value" id="rh-lotacao">PFBRA</span>
+          </div>
+        </div>
+      </section>
+
+      <div class="table-gap"></div>
+
+      <section class="table-wrap">
+        <table>
+          <colgroup>
+            <col class="c-dia">
+            <col class="c-gap">
+            <col class="c-hora"><col class="c-hora">
+            <col class="c-gap">
+            <col class="c-hora"><col class="c-hora">
+            <col class="c-gap">
+            <col class="c-total"><col class="c-total"><col class="c-total">
+          </colgroup>
+          <thead>
+            <tr class="head1">
+              <th rowspan="2">DIA</th>
+              <th rowspan="2" class="gap-col"></th>
+              <th colspan="2">1º EXPEDIENTE</th>
+              <th rowspan="2" class="gap-col"></th>
+              <th colspan="2">2º EXPEDIENTE</th>
+              <th rowspan="2" class="gap-col"></th>
+              <th colspan="3">TOTAL DE HORAS</th>
+            </tr>
+            <tr class="head2">
+              <th>ENTRADA</th>
+              <th>SAÍDA</th>
+              <th>ENTRADA</th>
+              <th>SAÍDA</th>
+              <th>HORAS GECC</th>
+              <th>HORAS EXTRAS</th>
+              <th>SALDO</th>
+            </tr>
+          </thead>
+          <tbody id="rh-dias"></tbody>
+          <tfoot>
+            <tr>
+              <td colspan="8" class="totais-label">TOTAIS</td>
+              <td class="total-value" id="total-gecc">00:00</td>
+              <td class="total-value" id="total-extras">00:00</td>
+              <td class="total-value" id="total-saldo">00:00</td>
+            </tr>
+          </tfoot>
+        </table>
+      </section>
+    </main>
+  </div>
+<script>
+(function(){
+  const nomesMes = ['JANEIRO','FEVEREIRO','MARÇO','ABRIL','MAIO','JUNHO','JULHO','AGOSTO','SETEMBRO','OUTUBRO','NOVEMBRO','DEZEMBRO'];
+
+  function $(id){return document.getElementById(id)}
+  function pad(n){return String(n).padStart(2,'0')}
+  function norm(s){
+    return String(s||'')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g,'')
+      .toLowerCase();
+  }
+  function userKey(u){
+    return norm((u && u.nome) || 'usuario')
+      .replace(/[^a-z0-9]+/g,'-')
+      .replace(/^-|-$/g,'') || 'usuario';
+  }
+  function readJson(key, fallback){
+    try{return JSON.parse(localStorage.getItem(key) || JSON.stringify(fallback))}
+    catch(e){return fallback}
+  }
+  function toMin(t){
+    if(!t || !/^\d{2}:\d{2}$/.test(t)) return 0;
+    const [h,m]=t.split(':').map(Number);
+    return h*60+m;
+  }
+  function fmt(min){
+    min = Math.round(min || 0);
+    const sign = min < 0 ? '-' : '';
+    min = Math.abs(min);
+    return sign + pad(Math.floor(min/60)) + ':' + pad(min%60);
+  }
+  function diff(e,s){
+    const a = toMin(e), b = toMin(s);
+    return (a && b && b > a) ? b-a : 0;
+  }
+
+  const params = new URLSearchParams(location.search);
+  const ym = params.get('ym') || new Date().toISOString().slice(0,7);
+  const [anoStr, mesStr] = ym.split('-');
+  const ano = Number(anoStr);
+  const mes = Number(mesStr);
+
+  const currentUser = readJson('ppf_current_user_v2', {
+    nome:'USUÁRIO',
+    matricula:'',
+    cpf:'',
+    cargo:'PPF',
+    lotacao:''
+  });
+
+  const records = readJson('ppf_records_monthly_v2', {});
+  const doc = records[userKey(currentUser)+'_'+ym] || {perfilSnapshot:currentUser,dias:{}};
+  const usuario = {...currentUser, ...(doc.perfilSnapshot || {})};
+
+  const holidayList = readJson('ppf_holidays_v2', []);
+  const feriados = {};
+  holidayList.forEach(h => {
+    if(h && h.date) feriados[h.date] = h.name || 'Feriado';
+  });
+
+  function dateKey(d){
+    return ano + '-' + pad(mes) + '-' + pad(d);
+  }
+  function rotuloDia(d, rec){
+    const dt = new Date(ano, mes-1, d);
+    if(feriados[dateKey(d)] || rec.feriado || rec.pontoFacultativo) return 'F-' + pad(d);
+    if(dt.getDay() === 6) return 'S-' + pad(d);
+    if(dt.getDay() === 0) return 'D-' + pad(d);
+    return pad(d);
+  }
+
+  $('rh-mes').textContent = nomesMes[mes-1] || '';
+  $('rh-ano').textContent = ano || '';
+  $('rh-nome').textContent = usuario.nome || '';
+  $('rh-matricula').textContent = usuario.matricula || usuario.siape || '';
+  $('rh-cpf').textContent = usuario.cpf || '';
+  $('rh-cargo').textContent = usuario.cargo || 'PPF';
+  $('rh-lotacao').textContent = usuario.lotacao || '';
+
+  const tbody = $('rh-dias');
+  tbody.innerHTML = '';
+
+  const diasNoMes = new Date(ano, mes, 0).getDate();
+  let totalGecc = 0;
+  let totalExtras = 0;
+  let totalSaldo = 0;
+
+  for(let d=1; d<=31; d++){
+    if(d > diasNoMes) continue;
+
+    const day = pad(d);
+    const rec = doc.dias[day] || doc.dias[String(d)] || {};
+    const dt = new Date(ano, mes-1, d);
+    const isHoliday = !!feriados[dateKey(d)] || !!rec.feriado || !!rec.pontoFacultativo;
+    const isWeekend = dt.getDay() === 0 || dt.getDay() === 6;
+
+    const worked = diff(rec.e1,rec.s1) + diff(rec.e2,rec.s2);
+    const gecc = toMin(rec.gecc);
+    const extras = Math.max(0, worked - 480);
+    const saldo = extras - gecc;
+
+    totalGecc += gecc;
+    totalExtras += extras;
+    totalSaldo += saldo;
+
+    const tr = document.createElement('tr');
+    if(isHoliday) tr.classList.add('holiday');
+    else if(isWeekend) tr.classList.add('weekend');
+
+    tr.innerHTML = `
+      <td class="day-cell">${rotuloDia(d, rec)}</td>
+      <td class="gap-col"></td>
+      <td class="time">${rec.e1 || ''}</td>
+      <td class="time">${rec.s1 || ''}</td>
+      <td class="gap-col"></td>
+      <td class="time">${rec.e2 || ''}</td>
+      <td class="time">${rec.s2 || ''}</td>
+      <td class="gap-col"></td>
+      <td class="total">${gecc ? fmt(gecc) : ''}</td>
+      <td class="total">${extras ? fmt(extras) : ''}</td>
+      <td class="total ${saldo < 0 ? 'negative' : ''}">${saldo ? fmt(saldo) : ''}</td>
+    `;
+    tbody.appendChild(tr);
+  }
+
+  $('total-gecc').textContent = fmt(totalGecc);
+  $('total-extras').textContent = fmt(totalExtras);
+  $('total-saldo').textContent = fmt(totalSaldo);
+  $('total-saldo').classList.toggle('negative', totalSaldo < 0);
+})();
+</script>
+</body>
+</html>

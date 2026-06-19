@@ -1,0 +1,12 @@
+name = "ponto-ppf-backup-diario"
+main = "backup-cron.js"
+compatibility_date = "2026-06-19"
+
+[triggers]
+crons = ["0 3 * * *"]
+
+[vars]
+BACKUP_URL = "https://SEU-DOMINIO.pages.dev"
+
+# Configure BACKUP_CRON_SECRET com `wrangler secret put BACKUP_CRON_SECRET`.
+# O mesmo valor deve existir como Secret no projeto Cloudflare Pages.

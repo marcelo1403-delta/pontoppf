@@ -1,0 +1,8 @@
+{
+  "name": "ponto-ppf",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "node --check app.js && node --check sw.js && node --check functions/api/register.js && node --check functions/api/auth/resolve-login.js && node --check functions/api/admin/gecc.js && node --check functions/api/admin/backup.js && node --check workers/backup-cron.js"
+  }
+}
