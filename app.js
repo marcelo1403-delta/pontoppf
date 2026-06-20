@@ -698,7 +698,11 @@ function initializeDailyPersonControl() {
 function fitDailyPersonName() {
   const element = byId("dailyPersonName");
   if (!element || element.hidden) return;
-  const fullName = String(currentUser?.nome || "Usuário").trim();
+  fitPersonNameToWidth(element, currentUser?.nome || "Usuário");
+}
+
+function fitPersonNameToWidth(element, value) {
+  const fullName = String(value || "Usuário").trim();
   const parts = fullName.split(/\s+/).filter(Boolean);
   element.title = fullName;
   element.textContent = fullName;
@@ -805,14 +809,15 @@ function enhanceMonthlyRegisterLayout() {
   const personBox = document.createElement("div");
   personBox.className = "monthlyPersonBox";
   personBox.innerHTML = `
-    <span class="monthlyPersonIcon" aria-hidden="true">&#128100;</span>
     <span class="monthlyPersonContent">
       <small>REGISTRO DE</small>
+      <span id="monthlyPersonName" class="monthlyPersonName"></span>
       <select id="monthlyPersonSelect" class="monthlyPersonSelect" aria-label="Usuário do registro mensal"></select>
     </span>`;
   top.appendChild(personBox);
   configureMonthlyTableStructure();
   byId("monthlyPersonSelect")?.addEventListener("change", handleMonthlyPersonChange);
+  window.addEventListener("resize", fitMonthlyPersonName);
 }
 
 function configureMonthlyTableStructure() {
@@ -828,11 +833,23 @@ function configureMonthlyTableStructure() {
 
 function initializeMonthlyPersonControl() {
   const select = byId("monthlyPersonSelect");
-  if (!select) return;
+  const name = byId("monthlyPersonName");
+  if (!select || !name) return;
   const manager = canManageUsers();
   selectedMonthlyPerson = currentUser;
+  select.hidden = !manager;
+  name.hidden = manager;
+  name.textContent = currentUser?.nome || "Usuário";
+  name.title = currentUser?.nome || "Usuário";
   select.disabled = !manager;
   populateMonthlyPersonSelect();
+  requestAnimationFrame(fitMonthlyPersonName);
+}
+
+function fitMonthlyPersonName() {
+  const element = byId("monthlyPersonName");
+  if (!element || element.hidden) return;
+  fitPersonNameToWidth(element, currentUser?.nome || "Usuário");
 }
 
 function populateMonthlyPersonSelect() {
