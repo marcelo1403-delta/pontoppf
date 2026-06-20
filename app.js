@@ -645,7 +645,6 @@ function enhanceDailyRegisterLayout() {
   saveRow.appendChild(saveButton);
 
   personSide.innerHTML = `
-    <span class="dailyPersonIcon" aria-hidden="true">&#128100;</span>
     <span class="dailyPersonContent">
       <small>REGISTRO DE</small>
       <span id="dailyPersonName" class="dailyPersonName"></span>
@@ -676,19 +675,28 @@ function initializeDailyPersonControl() {
   const name = byId("dailyPersonName");
   if (!select || !name) return;
   const manager = canManageUsers();
-  select.hidden = false;
-  name.hidden = true;
-  select.disabled = !manager;
+  const fullName = currentUser?.nome || "Usuário";
+  select.hidden = !manager;
+  name.hidden = manager;
+  name.textContent = compactPersonName(fullName);
+  name.title = fullName;
+  select.disabled = false;
   if (manager) {
     selectedDailyPerson = currentUser;
     populateDailyPersonSelect();
   } else {
     selectedDailyPerson = currentUser;
     const id = personPointId(currentUser);
-    select.innerHTML = `<option value="${escapeHtml(id)}">${escapeHtml(currentUser?.nome || "Usuário")}</option>`;
+    select.innerHTML = `<option value="${escapeHtml(id)}">${escapeHtml(compactPersonName(fullName))}</option>`;
     select.value = id;
   }
   applyDailyPermissions();
+}
+
+function compactPersonName(value) {
+  const parts = String(value || "").trim().split(/\s+/).filter(Boolean);
+  if (parts.length <= 2) return parts.join(" ");
+  return `${parts.slice(0, 2).join(" ")}...`;
 }
 
 function selectableDailyUsers() {
@@ -718,7 +726,7 @@ function populateDailyPersonSelect() {
   const currentId = dailyPersonId();
   const options = dailyPersonOptions();
   select.innerHTML = options.map((person) => (
-    `<option value="${escapeHtml(personPointId(person))}">${escapeHtml(person.nome || person.matricula || "Usuário")}</option>`
+    `<option value="${escapeHtml(personPointId(person))}" title="${escapeHtml(person.nome || "")}">${escapeHtml(compactPersonName(person.nome || person.matricula || "Usuário"))}</option>`
   )).join("");
   if (currentId && options.some((person) => personPointId(person) === currentId)) select.value = currentId;
 }
