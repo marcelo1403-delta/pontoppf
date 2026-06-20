@@ -838,10 +838,11 @@ function initializeMonthlyPersonControl() {
   const manager = canManageUsers();
   selectedMonthlyPerson = currentUser;
   select.hidden = !manager;
-  name.hidden = manager;
+  name.hidden = false;
   name.textContent = currentUser?.nome || "Usuário";
   name.title = currentUser?.nome || "Usuário";
   select.disabled = !manager;
+  $(".monthlyPersonBox")?.classList.toggle("selectable", manager);
   populateMonthlyPersonSelect();
   requestAnimationFrame(fitMonthlyPersonName);
 }
@@ -849,7 +850,7 @@ function initializeMonthlyPersonControl() {
 function fitMonthlyPersonName() {
   const element = byId("monthlyPersonName");
   if (!element || element.hidden) return;
-  fitPersonNameToWidth(element, currentUser?.nome || "Usuário");
+  fitPersonNameToWidth(element, selectedMonthlyPerson?.nome || currentUser?.nome || "Usuário");
 }
 
 function populateMonthlyPersonSelect() {
@@ -862,12 +863,15 @@ function populateMonthlyPersonSelect() {
   )).join("");
   select.value = options.some((person) => personPointId(person) === currentId) ? currentId : personPointId(currentUser);
   select.disabled = !canManageUsers();
+  selectedMonthlyPerson = options.find((person) => personPointId(person) === select.value) || currentUser;
+  requestAnimationFrame(fitMonthlyPersonName);
 }
 
 async function handleMonthlyPersonChange(event) {
   const id = event.target.value;
   selectedMonthlyPerson = dailyPersonOptions().find((person) => personPointId(person) === id) || currentUser;
   selectedDailyPerson = selectedMonthlyPerson;
+  requestAnimationFrame(fitMonthlyPersonName);
   currentMonthPointDays = {};
   syncPointPersonSelects();
   monthlyPointDays = {};
@@ -881,6 +885,7 @@ function syncPointPersonSelects() {
   const monthlySelect = byId("monthlyPersonSelect");
   if (dailySelect && [...dailySelect.options].some((option) => option.value === id)) dailySelect.value = id;
   if (monthlySelect && [...monthlySelect.options].some((option) => option.value === id)) monthlySelect.value = id;
+  requestAnimationFrame(fitMonthlyPersonName);
 }
 
 function normalizeValidationItems(messages) {
