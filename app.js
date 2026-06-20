@@ -668,6 +668,7 @@ function enhanceDailyRegisterLayout() {
     button.addEventListener("click", () => selectDailyShift(button.dataset.dailyShift));
   });
   byId("dailyPersonSelect")?.addEventListener("change", handleDailyPersonChange);
+  window.addEventListener("resize", fitDailyPersonName);
 }
 
 function initializeDailyPersonControl() {
@@ -678,7 +679,7 @@ function initializeDailyPersonControl() {
   const fullName = currentUser?.nome || "Usuário";
   select.hidden = !manager;
   name.hidden = manager;
-  name.textContent = compactPersonName(fullName);
+  name.textContent = fullName;
   name.title = fullName;
   select.disabled = false;
   if (manager) {
@@ -687,16 +688,30 @@ function initializeDailyPersonControl() {
   } else {
     selectedDailyPerson = currentUser;
     const id = personPointId(currentUser);
-    select.innerHTML = `<option value="${escapeHtml(id)}">${escapeHtml(compactPersonName(fullName))}</option>`;
+    select.innerHTML = `<option value="${escapeHtml(id)}">${escapeHtml(fullName)}</option>`;
     select.value = id;
   }
   applyDailyPermissions();
+  requestAnimationFrame(fitDailyPersonName);
 }
 
-function compactPersonName(value) {
-  const parts = String(value || "").trim().split(/\s+/).filter(Boolean);
-  if (parts.length <= 2) return parts.join(" ");
-  return `${parts.slice(0, 2).join(" ")}...`;
+function fitDailyPersonName() {
+  const element = byId("dailyPersonName");
+  if (!element || element.hidden) return;
+  const fullName = String(currentUser?.nome || "Usuário").trim();
+  const parts = fullName.split(/\s+/).filter(Boolean);
+  element.title = fullName;
+  element.textContent = fullName;
+  if (element.scrollWidth <= element.clientWidth || parts.length < 2) return;
+
+  let fitted = "";
+  for (let index = 1; index <= parts.length; index += 1) {
+    const candidate = `${parts.slice(0, index).join(" ")}...`;
+    element.textContent = candidate;
+    if (element.scrollWidth > element.clientWidth) break;
+    fitted = candidate;
+  }
+  element.textContent = fitted || `${parts[0]}...`;
 }
 
 function selectableDailyUsers() {
@@ -726,7 +741,7 @@ function populateDailyPersonSelect() {
   const currentId = dailyPersonId();
   const options = dailyPersonOptions();
   select.innerHTML = options.map((person) => (
-    `<option value="${escapeHtml(personPointId(person))}" title="${escapeHtml(person.nome || "")}">${escapeHtml(compactPersonName(person.nome || person.matricula || "Usuário"))}</option>`
+    `<option value="${escapeHtml(personPointId(person))}" title="${escapeHtml(person.nome || "")}">${escapeHtml(person.nome || person.matricula || "Usuário")}</option>`
   )).join("");
   if (currentId && options.some((person) => personPointId(person) === currentId)) select.value = currentId;
 }
