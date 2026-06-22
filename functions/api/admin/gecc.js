@@ -18,8 +18,6 @@ export async function onRequest(context) {
   const partial = Boolean(entrada) !== Boolean(saida);
   if ((scheduleMode && (partial || (entrada && geccMinutes <= 0))) || geccMinutes === null) return json({ error: "Dados de GECC inválidos." }, 400);
   if (!targetUid || !/^\d{4}-\d{2}-\d{2}$/.test(date) || geccMinutes === null) return json({ error: "Dados de GECC inválidos." }, 400);
-  if (geccMinutes > 180) return json({ error: "As horas de GECC não podem ultrapassar 03 horas." }, 400);
-
   const config = {
     projectId: context.env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID,
     apiKey: context.env.FIREBASE_API_KEY || DEFAULT_API_KEY,

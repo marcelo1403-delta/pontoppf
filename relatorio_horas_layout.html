@@ -583,6 +583,7 @@ tfoot td.total-value{
   let totalGecc = 0;
   let totalExtras = 0;
   let totalSaldo = 0;
+  let hasPreviousGecc = false;
 
   for(let d=1; d<=31; d++){
     if(d > diasNoMes) continue;
@@ -595,8 +596,14 @@ tfoot td.total-value{
 
     const worked = diff(rec.e1,rec.s1) + diff(rec.e2,rec.s2);
     const gecc = toMin(rec.gecc);
-    const extras = Math.max(0, worked - 480);
-    const saldo = extras - gecc;
+    const extras = (isHoliday || isWeekend)
+      ? Math.min(worked, 120)
+      : Math.min(Math.max(0, worked - 480), 120);
+    let saldo = 0;
+    if(gecc > 0){
+      saldo = !hasPreviousGecc || isHoliday || isWeekend ? -gecc : extras - gecc;
+      hasPreviousGecc = true;
+    }
 
     totalGecc += gecc;
     totalExtras += extras;

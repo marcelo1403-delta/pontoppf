@@ -1206,7 +1206,7 @@ function normalDayMinutes() {
 }
 
 function extraDayMinutes() {
-  if (isMonthlySpecialDate(selectedWorkDate())) return workedDayMinutes();
+  if (isMonthlySpecialDate(selectedWorkDate())) return Math.min(workedDayMinutes(), 2 * 60);
   return Math.max(0, workedDayMinutes() - normalDayMinutes());
 }
 
@@ -1263,8 +1263,8 @@ function validateTimeFlow() {
 
   const firstTimes = [entrada1, saida1].filter((value) => value !== null);
   const secondTimes = [entrada2, saida2].filter((value) => value !== null);
-  if (firstTimes.length && secondTimes.length && Math.min(...secondTimes) <= Math.max(...firstTimes)) {
-    showSaveError("os horários do 2º turno tem que ser maior que dos 1º turno");
+  if (saida1 !== null && entrada2 !== null && entrada2 < saida1 + 60) {
+    showSaveError("A entrada do 2º expediente deve respeitar intervalo mínimo de 1 hora após a saída do 1º expediente.");
     return false;
   }
 
@@ -1287,7 +1287,7 @@ function pointDataWorkedMinutes(data, options = {}) {
 
 function pointDataExtraMinutes(data, options = {}) {
   const worked = pointDataWorkedMinutes(data, options);
-  if (options.specialDate) return worked;
+  if (options.specialDate) return Math.min(worked, 2 * 60);
   return Math.max(0, worked - Math.min(worked, 8 * 60));
 }
 
@@ -1334,10 +1334,15 @@ function validatePointTimes(data, options = {}) {
   if (thirdTimes.length && (firstPartial || secondPartial)) {
     add("Conclua ou limpe os expedientes da folha normal antes de registrar a GECC.", ["e1", "s1", "e2", "s2", "e3", "s3"].filter((field) => data[field]));
   }
-  if (firstTimes.length && secondTimes.length && Math.min(...secondTimes) <= Math.max(...firstTimes)) {
-    const secondFields = ["e2", "s2"].filter((field) => data[field]);
-    add("Os horários do 2º turno devem ser maiores que os do 1º turno.", secondFields);
+  if (s1 !== null && e2 !== null && e2 < s1 + 60) {
+    add("A entrada do 2º expediente deve ser pelo menos 1 hora após a saída do 1º expediente.", ["e2"]);
   }
+  [
+    ["e1", e1, "A entrada do 1º expediente"], ["s1", s1, "A saída do 1º expediente"],
+    ["e2", e2, "A entrada do 2º expediente"], ["s2", s2, "A saída do 2º expediente"]
+  ].forEach(([field, value, label]) => {
+    if (value !== null && value > 22 * 60) add(`${label} não pode ser posterior às 22:00.`, [field]);
+  });
   const daytimeTimes = [...firstTimes, ...secondTimes];
   if (e3 !== null && daytimeTimes.length && e3 <= Math.max(...daytimeTimes)) {
     add("O horário inicial da GECC deve ser posterior ao término da folha normal.", ["e3"]);
@@ -1347,9 +1352,8 @@ function validatePointTimes(data, options = {}) {
   const extra = pointDataExtraMinutes(data, options);
   const gecc = parseTimeMinutes(data.gecc) || 0;
   const extraFields = options.excludeThirdFromWorked ? ["e1", "s1", "e2", "s2"] : ["e1", "s1", "e2", "s2", "e3", "s3"];
-  if (extra > 2 * 60) add("As horas extras não podem ultrapassar 02 horas.", extraFields.filter((field) => data[field]));
+  if (!options.specialDate && extra > 2 * 60) add("As horas extras não podem ultrapassar 02 horas.", extraFields.filter((field) => data[field]));
   if (gecc > worked) add("As horas de GECC não podem ultrapassar o número de horas trabalhadas.", ["gecc"]);
-  if (gecc > 3 * 60) add("As horas de GECC não podem ultrapassar 03 horas.", ["gecc"]);
 
   const seen = new Set();
   return errors.filter((item) => {
@@ -2370,17 +2374,18 @@ function monthlyFillStatus(data) {
 }
 
 function monthlyWorkedMinutes(data) {
-  return pointDataWorkedMinutes(data);
+  return pointDataWorkedMinutes(data, { excludeThirdFromWorked: true });
 }
 
 function monthlyExtraMinutes(date, data) {
-  return pointDataExtraMinutes(data, { specialDate: isMonthlySpecialDate(date) });
+  return pointDataExtraMinutes(data, { specialDate: isMonthlySpecialDate(date), excludeThirdFromWorked: true });
 }
 
 function monthlyValidationErrors(date, data, row = null) {
   const target = (field) => row?.querySelector(`[data-monthly-field="${field}"]`);
   return validatePointTimes(data, {
     specialDate: isMonthlySpecialDate(date),
+    excludeThirdFromWorked: true,
     fieldTargets: {
       e1: target("e1"),
       s1: target("s1"),
@@ -2478,8 +2483,7 @@ function monthlyUpdateRowState(row) {
   }
 
   const extra = monthlyExtraMinutes(date, data);
-  const gecc = parseTimeMinutes(data.gecc) || 0;
-  const saldo = extra - gecc;
+  const saldo = monthlySaldoMinutes(date, data);
   const extraEl = row.querySelector("[data-monthly-total='extra']");
   const saldoEl = row.querySelector("[data-monthly-total='saldo']");
   if (extraEl) extraEl.textContent = formatMinutes(extra);
@@ -2487,6 +2491,17 @@ function monthlyUpdateRowState(row) {
     saldoEl.textContent = formatSignedMinutes(saldo);
     saldoEl.classList.toggle("negative", saldo < 0);
   }
+}
+
+function monthlySaldoMinutes(date, data) {
+  const gecc = parseTimeMinutes(data.gecc) || 0;
+  if (!gecc) return 0;
+  const hasPreviousGecc = $$(".monthlyTable tbody tr").some((row) => {
+    if (!row.dataset.date || row.dataset.date >= date) return false;
+    return (parseTimeMinutes(monthlyRowData(row).gecc) || 0) > 0;
+  });
+  if (!hasPreviousGecc || isMonthlySpecialDate(date)) return -gecc;
+  return monthlyExtraMinutes(date, data) - gecc;
 }
 
 function monthlyRowHtml(day, record = {}) {
@@ -2533,12 +2548,19 @@ function renderMonthlyTableRows() {
 function updateMonthlyTotals() {
   let totalGecc = 0;
   let totalExtra = 0;
+  let totalSaldo = 0;
   $$(".monthlyTable tbody tr").forEach((row) => {
     const data = monthlyRowData(row);
     totalGecc += parseTimeMinutes(data.gecc) || 0;
     totalExtra += monthlyExtraMinutes(row.dataset.date, data);
+    const saldo = monthlySaldoMinutes(row.dataset.date, data);
+    totalSaldo += saldo;
+    const saldoEl = row.querySelector("[data-monthly-total='saldo']");
+    if (saldoEl) {
+      saldoEl.textContent = formatSignedMinutes(saldo);
+      saldoEl.classList.toggle("negative", saldo < 0);
+    }
   });
-  const totalSaldo = totalExtra - totalGecc;
   const totals = $$(".monthlyTable tfoot .monthlyValue");
   if (totals[0]) totals[0].textContent = formatMinutes(totalGecc);
   if (totals[1]) totals[1].textContent = formatMinutes(totalExtra);
