@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Prévia — Registro Diário</title>
+<style>
+:root{font-family:Inter,Arial,sans-serif;color:#0f172a;background:#eef2f7}*{box-sizing:border-box}body{margin:0}.top{height:60px;background:#0759c7;color:#fff;display:flex;align-items:center;padding:0 22px;font-weight:900}.shell{width:min(760px,calc(100% - 24px));margin:22px auto}.tools,.meta,.card,.summary{background:#fff;border:1px solid #dbe3ee;border-radius:14px;box-shadow:0 5px 15px #0f172a0d}.tools{padding:12px;margin-bottom:12px;display:flex;align-items:center;gap:12px}.tools select{height:38px;border:1px solid #cbd5e1;border-radius:9px;padding:0 10px;font-weight:800}.meta{display:grid;grid-template-columns:1fr 1fr;padding:14px;margin-bottom:12px}.meta div:last-child{text-align:right}.tabs{display:grid;grid-template-columns:1fr 1fr;background:#fff;border:1px solid #dbe3ee;border-radius:14px 14px 0 0;overflow:hidden}.tab{height:50px;border:0;background:#fff;font-weight:900;color:#94a3b8;cursor:pointer}.tab.active{color:#0759c7;background:#eff6ff;box-shadow:inset 0 -3px #0759c7}.card{border-radius:0 0 14px 14px;padding:16px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.period{border:1px solid #93c5fd;border-radius:14px;padding:14px;text-align:center;background:#f8fbff}.period h2{font-size:17px;color:#0759c7;margin:0 0 14px}.field{margin:11px 0}.field label{display:block;font-size:11px;font-weight:900;color:#64748b;margin-bottom:5px}.field input{width:110px;height:42px;border:1px solid #cbd5e1;border-radius:10px;text-align:center;font-size:20px;font-weight:800}.field input:disabled{background:#e2e8f0;color:#64748b}.summary{margin-top:12px;padding:14px}.summary h3{font-size:14px;margin:0 0 12px}.totals{display:grid;grid-template-columns:repeat(3,1fr);text-align:center}.totals div{border-right:1px solid #dbe3ee}.totals div:last-child{border:0}.totals small{display:block;font-weight:900;color:#64748b}.totals strong{font-size:24px}.note{margin-top:12px;padding:10px;border-radius:10px;background:#fff7ed;color:#9a3412;font-weight:800;font-size:13px}.save{margin-top:12px;width:100%;height:44px;border:0;border-radius:11px;background:#0759c7;color:#fff;font-weight:900}.save:disabled{background:#94a3b8}.hidden{display:none}@media(max-width:520px){.grid{grid-template-columns:1fr}.tools{align-items:flex-start;flex-direction:column}}
+</style>
+</head>
+<body>
+<header class="top">PONTO PPF — PRÉVIA LOCAL</header>
+<main class="shell">
+  <section class="tools"><b>Visualizar como:</b><select id="role"><option value="usuario">USUÁRIO</option><option value="gestor">GESTOR</option><option value="admin">ADMINISTRADOR</option></select></section>
+  <section class="meta"><div><small>DATA</small><br><b>22/06/2026</b></div><div><small>REGISTRO DE</small><br><b>USUÁRIO DE TESTE</b></div></section>
+  <section class="tabs"><button class="tab active" data-view="normal">FOLHA NORMAL</button><button class="tab" data-view="gecc">GECC</button></section>
+  <section class="card">
+    <div id="normal" class="grid">
+      <article class="period"><h2>1º EXPEDIENTE</h2><div class="field"><label>ENTRADA</label><input value="08:00"></div><div class="field"><label>SAÍDA</label><input value="12:00"></div></article>
+      <article class="period"><h2>2º EXPEDIENTE</h2><div class="field"><label>ENTRADA</label><input value="14:00"></div><div class="field"><label>SAÍDA</label><input value="18:00"></div></article>
+    </div>
+    <div id="gecc" class="hidden"><article class="period"><h2>HORÁRIO</h2><div class="field"><label>INICIAL</label><input class="geccField" value="18:30"></div><div class="field"><label>FINAL</label><input class="geccField" value="20:30"></div></article></div>
+    <div id="notice" class="note hidden">Usuários podem visualizar a GECC, mas somente gestor ou administrador pode registrá-la.</div>
+    <button id="save" class="save">GRAVAR</button>
+  </section>
+  <section class="summary"><h3>RESUMO DO DIA</h3><div class="totals"><div><small>HORAS TRABALHADAS</small><strong>08:00</strong></div><div><small>HORAS NORMAIS</small><strong>08:00</strong></div><div><small>HORAS EXTRAS</small><strong>00:00</strong></div></div></section>
+</main>
+<script>
+const tabs=[...document.querySelectorAll('.tab')],role=document.querySelector('#role'),save=document.querySelector('#save'),notice=document.querySelector('#notice');let view='normal';
+function render(){tabs.forEach(x=>x.classList.toggle('active',x.dataset.view===view));normal.classList.toggle('hidden',view!=='normal');gecc.classList.toggle('hidden',view!=='gecc');const locked=view==='gecc'&&role.value==='usuario';document.querySelectorAll('.geccField').forEach(x=>x.disabled=locked);notice.classList.toggle('hidden',!locked);save.disabled=locked}
+tabs.forEach(x=>x.onclick=()=>{view=x.dataset.view;render()});role.onchange=render;render();
+</script>
+</body>
+</html>
