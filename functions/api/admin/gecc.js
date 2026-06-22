@@ -10,8 +10,13 @@ export async function onRequest(context) {
   const input = await context.request.json().catch(() => null);
   const targetUid = String(input?.targetUid || "").trim();
   const date = String(input?.date || "");
-  const gecc = String(input?.gecc || "").trim();
-  const geccMinutes = parseMinutes(gecc) ?? (gecc ? null : 0);
+  const scheduleMode = Object.prototype.hasOwnProperty.call(input || {}, "entrada") || Object.prototype.hasOwnProperty.call(input || {}, "saida");
+  const entrada = String(input?.entrada || "").trim();
+  const saida = String(input?.saida || "").trim();
+  const requestedGecc = String(input?.gecc || "").trim();
+  const geccMinutes = scheduleMode ? interval(entrada, saida, true) : (parseMinutes(requestedGecc) ?? (requestedGecc ? null : 0));
+  const partial = Boolean(entrada) !== Boolean(saida);
+  if ((scheduleMode && (partial || (entrada && geccMinutes <= 0))) || geccMinutes === null) return json({ error: "Dados de GECC inválidos." }, 400);
   if (!targetUid || !/^\d{4}-\d{2}-\d{2}$/.test(date) || geccMinutes === null) return json({ error: "Dados de GECC inválidos." }, 400);
   if (geccMinutes > 180) return json({ error: "As horas de GECC não podem ultrapassar 03 horas." }, 400);
 
@@ -40,8 +45,10 @@ export async function onRequest(context) {
     const worked = Number(day.minutosTrabalhados?.integerValue || computeWorkedMinutes(day));
     if (geccMinutes > worked) return json({ error: "As horas de GECC não podem ultrapassar as horas trabalhadas." }, 400);
 
-    await writeGecc(config.projectId, accessToken, recordId, dayKey, gecc, geccMinutes, actorUid);
-    return json({ ok: true, horasGecc: gecc, minutosGecc: geccMinutes });
+    const gecc = scheduleMode ? (geccMinutes ? formatMinutes(geccMinutes) : "") : requestedGecc;
+    const hasNormalHours = Boolean(day.entrada1?.stringValue || day.saida1?.stringValue || day.entrada2?.stringValue || day.saida2?.stringValue);
+    await writeGecc(config.projectId, accessToken, recordId, dayKey, entrada, saida, gecc, geccMinutes, actorUid, hasNormalHours, scheduleMode);
+    return json({ ok: true, entradaNoturna: entrada, saidaNoturna: saida, horasGecc: gecc, minutosGecc: geccMinutes });
   } catch (error) {
     console.error("Falha ao gravar GECC.", { status: error?.status, message: String(error?.message || "").slice(0, 300) });
     return json({ error: error?.status && error.status < 500 ? error.message : "Não foi possível gravar GECC." }, error?.status || 500);
@@ -92,7 +99,7 @@ async function getDocument(projectId, accessToken, collectionId, documentId) {
   return data;
 }
 
-async function writeGecc(projectId, accessToken, recordId, dayKey, gecc, minutes, actorUid) {
+async function writeGecc(projectId, accessToken, recordId, dayKey, entrada, saida, gecc, minutes, actorUid, hasNormalHours, scheduleMode) {
   const now = new Date().toISOString();
   const values = {
     horasGecc: { stringValue: gecc },
@@ -100,6 +107,11 @@ async function writeGecc(projectId, accessToken, recordId, dayKey, gecc, minutes
     geccRegistradoPorUid: { stringValue: actorUid },
     geccAtualizadoEm: { timestampValue: now }
   };
+  if (scheduleMode) {
+    values.entradaNoturna = { stringValue: entrada };
+    values.saidaNoturna = { stringValue: saida };
+    values.turno = { stringValue: minutes ? (hasNormalHours ? "misto" : "noturno") : "diurno" };
+  }
   const prefix = `dias.\`${dayKey}\``;
   const response = await fetch(`https://firestore.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/databases/(default)/documents:commit`, {
     method: "POST",
@@ -119,12 +131,7 @@ async function writeGecc(projectId, accessToken, recordId, dayKey, gecc, minutes
 
 function computeWorkedMinutes(day) {
   const value = (name) => day[name]?.stringValue || "";
-  const shift = value("turno");
-  const regular = interval(value("entrada1"), value("saida1"), shift === "noturno") + interval(value("entrada2"), value("saida2"), false);
-  const night = interval(value("entradaNoturna"), value("saidaNoturna"), true);
-  if (shift === "noturno") return night || regular;
-  if (shift === "misto") return regular + night;
-  return regular + night;
+  return interval(value("entrada1"), value("saida1"), false) + interval(value("entrada2"), value("saida2"), false);
 }
 
 function interval(start, end, overnight) {
@@ -139,6 +146,10 @@ function parseMinutes(value) {
   const match = String(value || "").match(/^(\d{2}):(\d{2})$/);
   if (!match || Number(match[1]) > 23 || Number(match[2]) > 59) return null;
   return Number(match[1]) * 60 + Number(match[2]);
+}
+
+function formatMinutes(total) {
+  return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
 }
 
 async function getAccessToken(config) {

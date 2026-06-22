@@ -68,6 +68,8 @@ let monthlyLoadingCompetencia = "";
 let selectedDailyShift = "diurno";
 let savedDailyShift = "diurno";
 let pendingDailyShiftChange = false;
+let dailyNormalValues = { e1: "", s1: "", e2: "", s2: "" };
+let dailyGeccValues = { e1: "", s1: "" };
 let selectedDailyPerson = null;
 let selectedMonthlyPerson = null;
 
@@ -655,10 +657,11 @@ function enhanceDailyRegisterLayout() {
   shiftTabs.className = "dailyShiftTabs registerPointPanel";
   shiftTabs.setAttribute("aria-label", "Turno do registro diário");
   shiftTabs.innerHTML = `
-    <button class="dailyShiftTab active" type="button" data-daily-shift="diurno">DIURNO</button>
-    <button class="dailyShiftTab" type="button" data-daily-shift="noturno">NOTURNO</button>`;
+    <button class="dailyShiftTab active" type="button" data-daily-shift="diurno">FOLHA NORMAL</button>
+    <button class="dailyShiftTab" type="button" data-daily-shift="noturno">GECC</button>`;
   shiftTabs.appendChild(saveButton);
   pointCard.insertAdjacentElement("beforebegin", shiftTabs);
+  $(".geccRow", dailyView)?.remove();
 
   firstCard.id = "dailyFirstCard";
   secondCard.id = "dailySecondCard";
@@ -764,13 +767,8 @@ async function handleDailyPersonChange(event) {
 
 function selectDailyShift(shift, options = {}) {
   const nextShift = shift === "noturno" ? "noturno" : "diurno";
-  if (isManagingAnotherDailyPerson() && !options.fromRecord) return;
-  if (nextShift === "noturno" && (hasTime("entrada2View") || hasTime("saida2View")) && !options.fromRecord) {
-    showSaveError("Limpe o 2º expediente antes de mudar o registro para noturno.");
-    return;
-  }
+  if (!options.fromRecord) captureActiveDailyValues();
   selectedDailyShift = nextShift;
-  pendingDailyShiftChange = !options.fromRecord && selectedDailyShift !== savedDailyShift;
   $$(".dailyShiftTab").forEach((button) => {
     button.classList.toggle("active", button.dataset.dailyShift === nextShift);
   });
@@ -779,7 +777,8 @@ function selectDailyShift(shift, options = {}) {
   const title = byId("dailyFirstCardTitle");
   firstCard?.classList.toggle("night", nextShift === "noturno");
   secondCard?.classList.toggle("hidden", nextShift === "noturno");
-  if (title) title.textContent = nextShift === "noturno" ? "NOTURNO" : "1º EXPEDIENTE";
+  if (title) title.textContent = nextShift === "noturno" ? "HORÁRIO" : "1º EXPEDIENTE";
+  renderActiveDailyValues();
   updateSaveButtonState();
   syncTimeAvailability();
   updateDaySummary();
@@ -789,12 +788,28 @@ function applyDailyPermissions() {
   const manager = canManageUsers();
   const personSelect = byId("dailyPersonSelect");
   if (personSelect) personSelect.disabled = !manager;
-  $("#registro-diario .geccRow")?.classList.toggle("geccRoleRestricted", !manager);
-  const viewingAnotherPerson = isManagingAnotherDailyPerson();
-  $$(".dailyShiftTab").forEach((button) => {
-    button.disabled = viewingAnotherPerson;
-  });
   syncTimeAvailability();
+}
+
+function captureActiveDailyValues() {
+  if (selectedDailyShift === "noturno") {
+    dailyGeccValues = { e1: timeText("entrada1View"), s1: timeText("saida1View") };
+    return;
+  }
+  dailyNormalValues = {
+    e1: timeText("entrada1View"), s1: timeText("saida1View"),
+    e2: timeText("entrada2View"), s2: timeText("saida2View")
+  };
+}
+
+function renderActiveDailyValues() {
+  const values = selectedDailyShift === "noturno"
+    ? { entrada1View: dailyGeccValues.e1, saida1View: dailyGeccValues.s1, entrada2View: "", saida2View: "" }
+    : { entrada1View: dailyNormalValues.e1, saida1View: dailyNormalValues.s1, entrada2View: dailyNormalValues.e2, saida2View: dailyNormalValues.s2 };
+  Object.entries(values).forEach(([id, value]) => {
+    const input = byId(id);
+    if (input) input.value = value || "";
+  });
 }
 
 function enhanceMonthlyRegisterLayout() {
@@ -976,14 +991,27 @@ function currentTimeValues() {
     entrada1View: timeText("entrada1View"),
     saida1View: timeText("saida1View"),
     entrada2View: timeText("entrada2View"),
-    saida2View: timeText("saida2View"),
-    geccInput: timeText("geccInput")
+    saida2View: timeText("saida2View")
+  };
+}
+
+function allDailyTimeValues() {
+  return {
+    "diurno:entrada1View": dailyNormalValues.e1,
+    "diurno:saida1View": dailyNormalValues.s1,
+    "diurno:entrada2View": dailyNormalValues.e2,
+    "diurno:saida2View": dailyNormalValues.s2,
+    "noturno:entrada1View": dailyGeccValues.e1,
+    "noturno:saida1View": dailyGeccValues.s1
   };
 }
 
 function updateSaveButtonState() {
   const button = byId("savePointBtn");
-  if (button) button.disabled = canManageUsers() && !dailyPersonId();
+  if (!button) return;
+  const readOnlyGecc = selectedDailyShift === "noturno" && !canManageUsers();
+  const readOnlyNormal = selectedDailyShift === "diurno" && isManagingAnotherDailyPerson();
+  button.disabled = !dailyPersonId() || readOnlyGecc || readOnlyNormal;
 }
 
 function setSaveButtonText(text = "Gravar") {
@@ -992,11 +1020,12 @@ function setSaveButtonText(text = "Gravar") {
 }
 
 function fillStatusFromCurrentTimes() {
-  const firstEmpty = emptyInterval("entrada1View", "saida1View");
-  const secondEmpty = emptyInterval("entrada2View", "saida2View");
-  const firstComplete = completeInterval("entrada1View", "saida1View");
-  const secondComplete = completeInterval("entrada2View", "saida2View");
-  const hasAnyTurnoTime = ["entrada1View", "saida1View", "entrada2View", "saida2View"].some(hasTime);
+  captureActiveDailyValues();
+  const firstEmpty = !dailyNormalValues.e1 && !dailyNormalValues.s1;
+  const secondEmpty = !dailyNormalValues.e2 && !dailyNormalValues.s2;
+  const firstComplete = parseTimeMinutes(dailyNormalValues.e1) !== null && parseTimeMinutes(dailyNormalValues.s1) !== null;
+  const secondComplete = parseTimeMinutes(dailyNormalValues.e2) !== null && parseTimeMinutes(dailyNormalValues.s2) !== null;
+  const hasAnyTurnoTime = Object.values(dailyNormalValues).some(Boolean);
 
   if (!hasAnyTurnoTime) return "";
   if ((firstComplete && secondEmpty) || (firstEmpty && secondComplete) || (firstComplete && secondComplete)) return "completo";
@@ -1029,18 +1058,19 @@ function updateFillStatusBanner(status = "", date = selectedWorkDate()) {
 
 function syncPendingTimeChange(input) {
   if (!input?.id) return;
+  const trackingKey = `${selectedDailyShift}:${input.id}`;
   const current = String(input.value || "").trim();
-  const saved = String(savedTimeValues[input.id] || "").trim();
+  const saved = String(savedTimeValues[trackingKey] || "").trim();
 
   if (current === saved) {
-    pendingTimeChanges.delete(input.id);
+    pendingTimeChanges.delete(trackingKey);
     if (current) markSaved(input);
     else setSaveFlag(input, null);
     updateSaveButtonState();
     return;
   }
 
-  pendingTimeChanges.add(input.id);
+  pendingTimeChanges.add(trackingKey);
   if (current) markUnsaved(input);
   else setSaveFlag(input, saved ? "unsaved" : null);
   updateFillStatusBanner("incompleto");
@@ -1048,7 +1078,8 @@ function syncPendingTimeChange(input) {
 }
 
 function clearPendingTimeChanges() {
-  savedTimeValues = currentTimeValues();
+  captureActiveDailyValues();
+  savedTimeValues = allDailyTimeValues();
   savedDailyShift = selectedDailyShift;
   pendingDailyShiftChange = false;
   pendingTimeChanges.clear();
@@ -1157,7 +1188,16 @@ function intervalMinutes(startId, endId) {
 }
 
 function workedDayMinutes() {
-  return intervalMinutes("entrada1View", "saida1View") + intervalMinutes("entrada2View", "saida2View");
+  captureActiveDailyValues();
+  return minutesBetween(dailyNormalValues.e1, dailyNormalValues.s1) + minutesBetween(dailyNormalValues.e2, dailyNormalValues.s2);
+}
+
+function geccDayMinutes() {
+  captureActiveDailyValues();
+  const start = parseTimeMinutes(dailyGeccValues.e1);
+  const end = parseTimeMinutes(dailyGeccValues.s1);
+  if (start === null || end === null) return 0;
+  return end <= start ? (24 * 60 - start) + end : end - start;
 }
 
 function normalDayMinutes() {
@@ -1166,7 +1206,7 @@ function normalDayMinutes() {
 }
 
 function extraDayMinutes() {
-  if (isMonthlySpecialDate(selectedWorkDate())) return Math.min(workedDayMinutes(), 2 * 60);
+  if (isMonthlySpecialDate(selectedWorkDate())) return workedDayMinutes();
   return Math.max(0, workedDayMinutes() - normalDayMinutes());
 }
 
@@ -1181,19 +1221,13 @@ function updateDaySummary() {
 
 function syncTimeAvailability() {
   const firstPartial = partialInterval("entrada1View", "saida1View");
-  const anyComplete = completeInterval("entrada1View", "saida1View") || completeInterval("entrada2View", "saida2View");
+  const geccView = selectedDailyShift === "noturno";
+  const canEditCurrentView = geccView ? canManageUsers() : !isManagingAnotherDailyPerson();
 
-  if (isManagingAnotherDailyPerson()) {
-    ["entrada1View", "saida1View", "entrada2View", "saida2View"].forEach((id) => setTimeDisabled(timeInput(id), true));
-    setTimeDisabled(timeInput("geccInput"), false);
-    return;
-  }
-
-  setTimeDisabled(timeInput("saida1View"), !hasTime("entrada1View"));
-  setTimeDisabled(timeInput("entrada1View"), false);
-  setTimeDisabled(timeInput("entrada2View"), selectedDailyShift === "noturno" || firstPartial);
-  setTimeDisabled(timeInput("saida2View"), selectedDailyShift === "noturno" || firstPartial || !hasTime("entrada2View"));
-  setTimeDisabled(timeInput("geccInput"), !canManageUsers());
+  setTimeDisabled(timeInput("entrada1View"), !canEditCurrentView);
+  setTimeDisabled(timeInput("saida1View"), !canEditCurrentView || !hasTime("entrada1View"));
+  setTimeDisabled(timeInput("entrada2View"), !canEditCurrentView || geccView || firstPartial);
+  setTimeDisabled(timeInput("saida2View"), !canEditCurrentView || geccView || firstPartial || !hasTime("entrada2View"));
 }
 
 function validateTimeFlow() {
@@ -1234,11 +1268,6 @@ function validateTimeFlow() {
     return false;
   }
 
-  if (hasTime("geccInput") && !validTime("geccInput")) {
-    showSaveError("Preencha Horas de GECC no formato 00:00.");
-    return false;
-  }
-
   return true;
 }
 
@@ -1253,12 +1282,12 @@ function pointDataWorkedMinutes(data, options = {}) {
   const nightMinutes = nightStart !== null && nightEnd !== null
     ? (nightEnd <= nightStart ? (24 * 60 - nightStart) + nightEnd : nightEnd - nightStart)
     : 0;
-  return firstMinutes + minutesBetween(data.e2, data.s2) + nightMinutes;
+  return firstMinutes + minutesBetween(data.e2, data.s2) + (options.excludeThirdFromWorked ? 0 : nightMinutes);
 }
 
 function pointDataExtraMinutes(data, options = {}) {
   const worked = pointDataWorkedMinutes(data, options);
-  if (options.specialDate) return Math.min(worked, 2 * 60);
+  if (options.specialDate) return worked;
   return Math.max(0, worked - Math.min(worked, 8 * 60));
 }
 
@@ -1289,8 +1318,8 @@ function validatePointTimes(data, options = {}) {
   if (data.e1 && !data.s1) add("No 1º expediente a entrada está preenchida mas a saída está vazia.", ["e1"]);
   if (data.s2 && !data.e2) add("No 2º expediente a saída está preenchida mas a entrada está vazia.", ["s2"]);
   if (data.e2 && !data.s2) add("No 2º expediente a entrada está preenchida mas a saída está vazia.", ["e2"]);
-  if (data.s3 && !data.e3) add("No período noturno a saída está preenchida mas a entrada está vazia.", ["s3"]);
-  if (data.e3 && !data.s3) add("No período noturno a entrada está preenchida mas a saída está vazia.", ["e3"]);
+  if (data.s3 && !data.e3) add("Na GECC o horário final está preenchido, mas o inicial está vazio.", ["s3"]);
+  if (data.e3 && !data.s3) add("Na GECC o horário inicial está preenchido, mas o final está vazio.", ["e3"]);
   if (options.shift !== "noturno" && e1 !== null && s1 !== null && s1 <= e1) add("1º expediente: a saída deve ser maior que a entrada.", ["s1"]);
   if (e2 !== null && s2 !== null && s2 <= e2) add("2º expediente: a saída deve ser maior que a entrada.", ["s2"]);
 
@@ -1303,7 +1332,7 @@ function validatePointTimes(data, options = {}) {
     add("Conclua ou limpe o 1º expediente antes de iniciar o 2º.", ["e1", "s1", "e2", "s2"].filter((field) => data[field]));
   }
   if (thirdTimes.length && (firstPartial || secondPartial)) {
-    add("Conclua ou limpe os expedientes anteriores antes de iniciar o período noturno.", ["e1", "s1", "e2", "s2", "e3", "s3"].filter((field) => data[field]));
+    add("Conclua ou limpe os expedientes da folha normal antes de registrar a GECC.", ["e1", "s1", "e2", "s2", "e3", "s3"].filter((field) => data[field]));
   }
   if (firstTimes.length && secondTimes.length && Math.min(...secondTimes) <= Math.max(...firstTimes)) {
     const secondFields = ["e2", "s2"].filter((field) => data[field]);
@@ -1311,13 +1340,14 @@ function validatePointTimes(data, options = {}) {
   }
   const daytimeTimes = [...firstTimes, ...secondTimes];
   if (e3 !== null && daytimeTimes.length && e3 <= Math.max(...daytimeTimes)) {
-    add("A entrada do período noturno deve ser maior que os horários dos expedientes anteriores.", ["e3"]);
+    add("O horário inicial da GECC deve ser posterior ao término da folha normal.", ["e3"]);
   }
 
   const worked = pointDataWorkedMinutes(data, options);
   const extra = pointDataExtraMinutes(data, options);
   const gecc = parseTimeMinutes(data.gecc) || 0;
-  if (!options.specialDate && extra > 2 * 60) add("As horas extras não podem ultrapassar 02 horas.", ["e1", "s1", "e2", "s2", "e3", "s3"].filter((field) => data[field]));
+  const extraFields = options.excludeThirdFromWorked ? ["e1", "s1", "e2", "s2"] : ["e1", "s1", "e2", "s2", "e3", "s3"];
+  if (extra > 2 * 60) add("As horas extras não podem ultrapassar 02 horas.", extraFields.filter((field) => data[field]));
   if (gecc > worked) add("As horas de GECC não podem ultrapassar o número de horas trabalhadas.", ["gecc"]);
   if (gecc > 3 * 60) add("As horas de GECC não podem ultrapassar 03 horas.", ["gecc"]);
 
@@ -1331,21 +1361,27 @@ function validatePointTimes(data, options = {}) {
 }
 
 function pointValidationErrors() {
+  captureActiveDailyValues();
+  const geccMinutes = geccDayMinutes();
   return validatePointTimes({
-    e1: timeText("entrada1View"),
-    s1: timeText("saida1View"),
-    e2: timeText("entrada2View"),
-    s2: timeText("saida2View"),
-    gecc: timeText("geccInput")
+    e1: dailyNormalValues.e1,
+    s1: dailyNormalValues.s1,
+    e2: dailyNormalValues.e2,
+    s2: dailyNormalValues.s2,
+    e3: dailyGeccValues.e1,
+    s3: dailyGeccValues.s1,
+    gecc: geccMinutes ? formatMinutes(geccMinutes) : ""
   }, {
     specialDate: isMonthlySpecialDate(selectedWorkDate()),
-    shift: selectedDailyShift,
+    excludeThirdFromWorked: true,
     fieldTargets: {
       e1: byId("entrada1View"),
       s1: byId("saida1View"),
       e2: byId("entrada2View"),
       s2: byId("saida2View"),
-      gecc: byId("geccInput")
+      e3: byId("entrada1View"),
+      s3: byId("saida1View"),
+      gecc: byId("entrada1View")
     }
   });
 }
@@ -1373,23 +1409,24 @@ function pointRecordId(date = selectedWorkDate()) {
 }
 
 function timeDayPayload() {
+  captureActiveDailyValues();
   const workedMinutes = workedDayMinutes();
   const normalMinutes = normalDayMinutes();
   const extraMinutes = extraDayMinutes();
-  const geccMinutes = parseTimeMinutes(byId("geccInput")?.value) || 0;
+  const geccMinutes = geccDayMinutes();
   const data = selectedWorkDate();
-
-  const nightShift = selectedDailyShift === "noturno";
+  const hasNormal = Object.values(dailyNormalValues).some(Boolean);
+  const hasGecc = Object.values(dailyGeccValues).some(Boolean);
   const payload = {
     data,
-    turno: selectedDailyShift,
-    entrada1: timeText("entrada1View"),
-    saida1: timeText("saida1View"),
-    entrada2: timeText("entrada2View"),
-    saida2: timeText("saida2View"),
-    entradaNoturna: nightShift ? timeText("entrada1View") : "",
-    saidaNoturna: nightShift ? timeText("saida1View") : "",
-    horasGecc: timeText("geccInput"),
+    turno: hasGecc ? (hasNormal ? "misto" : "noturno") : "diurno",
+    entrada1: dailyNormalValues.e1,
+    saida1: dailyNormalValues.s1,
+    entrada2: dailyNormalValues.e2,
+    saida2: dailyNormalValues.s2,
+    entradaNoturna: dailyGeccValues.e1,
+    saidaNoturna: dailyGeccValues.s1,
+    horasGecc: geccMinutes ? formatMinutes(geccMinutes) : "",
     minutosTrabalhados: workedMinutes,
     minutosNormais: normalMinutes,
     minutosExtras: extraMinutes,
@@ -1430,17 +1467,21 @@ function timeRecordPayload() {
 }
 
 function applyPointRecord(record) {
-  savedDailyShift = record?.turno === "noturno" ? "noturno" : "diurno";
+  const legacyGeccOnly = record?.turno === "noturno";
+  dailyNormalValues = {
+    e1: legacyGeccOnly ? "" : (record?.entrada1 || ""),
+    s1: legacyGeccOnly ? "" : (record?.saida1 || ""),
+    e2: record?.entrada2 || "",
+    s2: record?.saida2 || ""
+  };
+  dailyGeccValues = {
+    e1: record?.entradaNoturna || (legacyGeccOnly ? record?.entrada1 : "") || "",
+    s1: record?.saidaNoturna || (legacyGeccOnly ? record?.saida1 : "") || ""
+  };
+  savedDailyShift = legacyGeccOnly ? "noturno" : "diurno";
   pendingDailyShiftChange = false;
   selectDailyShift(savedDailyShift, { fromRecord: true });
-  const nightRecord = savedDailyShift === "noturno";
-  const fields = {
-    entrada1View: nightRecord ? (record?.entradaNoturna || record?.entrada1 || "") : (record?.entrada1 || ""),
-    saida1View: nightRecord ? (record?.saidaNoturna || record?.saida1 || "") : (record?.saida1 || ""),
-    entrada2View: record?.entrada2 || "",
-    saida2View: record?.saida2 || "",
-    geccInput: record?.horasGecc || ""
-  };
+  const fields = currentTimeValues();
 
   Object.entries(fields).forEach(([id, value]) => {
     const input = byId(id);
@@ -1449,7 +1490,7 @@ function applyPointRecord(record) {
     setSaveFlag(input, value ? "saved" : null);
   });
 
-  savedTimeValues = currentTimeValues();
+  savedTimeValues = allDailyTimeValues();
   pendingTimeChanges.clear();
   syncTimeAvailability();
   updateSaveButtonState();
@@ -1525,12 +1566,14 @@ function bindTimeTracking() {
   $$(".timeTrack").forEach((input) => {
     input.addEventListener("input", () => {
       if (String(input.value || "").length === 5 && !validateTimeInput(input)) {
+        captureActiveDailyValues();
         syncPendingTimeChange(input);
         updateFillStatusBanner("incompleto");
         syncTimeAvailability();
         updateDaySummary();
         return;
       }
+      captureActiveDailyValues();
       syncPendingTimeChange(input);
       updateFillStatusBanner(fillStatusFromCurrentTimes(), selectedWorkDate());
       syncTimeAvailability();
@@ -1538,6 +1581,7 @@ function bindTimeTracking() {
     });
     input.addEventListener("blur", async () => {
       input.value = formatTime(input.value);
+      captureActiveDailyValues();
       validateTimeInput(input);
       syncPendingTimeChange(input);
       syncTimeAvailability();
@@ -1556,19 +1600,27 @@ function changedTimeSuccessLines() {
     entrada1View: "1º expediente: entrada",
     saida1View: "1º expediente: saída",
     entrada2View: "2º expediente: entrada",
-    saida2View: "2º expediente: saída",
-    geccInput: "gecc"
+    saida2View: "2º expediente: saída"
   };
-  return [...pendingTimeChanges].map((id) => `${labels[id] || id} gravada com sucesso!`);
+  return [...pendingTimeChanges].map((key) => {
+    const id = key.split(":").pop();
+    const gecc = key.startsWith("noturno:");
+    const label = gecc
+      ? (id === "entrada1View" ? "GECC: horário inicial" : "GECC: horário final")
+      : labels[id];
+    return `${label || id} gravada com sucesso!`;
+  });
 }
 
-async function saveManagedGecc(targetUid, date, gecc) {
+async function saveManagedGecc(targetUid, date, entrada, saida) {
   if (!auth.currentUser) throw new Error("Sessão administrativa inválida.");
   const idToken = await auth.currentUser.getIdToken(true);
   const response = await fetch("/api/admin/gecc", {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
-    body: JSON.stringify({ targetUid, date, gecc })
+    body: JSON.stringify(saida === undefined
+      ? { targetUid, date, gecc: entrada }
+      : { targetUid, date, entrada, saida })
   });
   const result = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(result.error || "Não foi possível gravar GECC.");
@@ -1582,13 +1634,12 @@ async function savePointDraft(options = {}) {
     return;
   }
 
-  const changedFields = [...pendingTimeChanges];
-  if (isManagingAnotherDailyPerson() && changedFields.some((id) => id !== "geccInput")) {
-    showSaveError("Gestor e administrador podem alterar somente as horas de GECC.");
+  if (isManagingAnotherDailyPerson() && selectedDailyShift !== "noturno") {
+    showSaveError("Gestor e administrador podem alterar somente os horários de GECC de outro usuário.");
     return;
   }
-  if (!canManageUsers() && changedFields.includes("geccInput")) {
-    showSaveError("Horas de GECC são registradas somente por Gestor ou Administrador.");
+  if (!canManageUsers() && selectedDailyShift === "noturno") {
+    showSaveError("GECC é registrada somente por Gestor ou Administrador.");
     return;
   }
 
@@ -1647,7 +1698,7 @@ async function savePointDraft(options = {}) {
       };
       writeMockDb(dbData);
     } else if (isManagingAnotherDailyPerson()) {
-      await saveManagedGecc(dailyPersonId(), selectedWorkDate(), dayPayload.horasGecc);
+      await saveManagedGecc(dailyPersonId(), selectedWorkDate(), dayPayload.entradaNoturna, dayPayload.saidaNoturna);
     } else {
       const ref = doc(db, "registrosPonto", recordId);
       const snap = await getDoc(ref).catch(() => null);
