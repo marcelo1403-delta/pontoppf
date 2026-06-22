@@ -65,6 +65,7 @@ let holidays = {};
 let currentMonthPointDays = {};
 let monthlyPointDays = {};
 let monthlyLoadingCompetencia = "";
+let monthlySaldoOpeningState = { hasGecc: false, permanent: false };
 let selectedDailyShift = "diurno";
 let savedDailyShift = "diurno";
 let pendingDailyShiftChange = false;
@@ -890,6 +891,7 @@ async function handleMonthlyPersonChange(event) {
   currentMonthPointDays = {};
   syncPointPersonSelects();
   monthlyPointDays = {};
+  monthlySaldoOpeningState = { hasGecc: false, permanent: false };
   renderMonthlyTableRows();
   await loadMonthlyPointRecords(selectedMonthlyCompetencia);
 }
@@ -2494,14 +2496,63 @@ function monthlyUpdateRowState(row) {
 }
 
 function monthlySaldoMinutes(date, data) {
-  const gecc = parseTimeMinutes(data.gecc) || 0;
-  if (!gecc) return 0;
-  const hasPreviousGecc = $$(".monthlyTable tbody tr").some((row) => {
-    if (!row.dataset.date || row.dataset.date >= date) return false;
-    return (parseTimeMinutes(monthlyRowData(row).gecc) || 0) > 0;
+  const state = { ...monthlySaldoOpeningState };
+  const rows = $$(".monthlyTable tbody tr")
+    .filter((row) => row.dataset.date && row.dataset.date <= date)
+    .sort((a, b) => a.dataset.date.localeCompare(b.dataset.date));
+  let saldo = 0;
+  rows.forEach((row) => {
+    const rowData = row.dataset.date === date ? data : monthlyRowData(row);
+    saldo = applyGeccBalanceRule(state, row.dataset.date, parseTimeMinutes(rowData.gecc) || 0, monthlyExtraMinutes(row.dataset.date, rowData));
   });
-  if (!hasPreviousGecc || isMonthlySpecialDate(date)) return -gecc;
-  return monthlyExtraMinutes(date, data) - gecc;
+  return saldo;
+}
+
+function applyGeccBalanceRule(state, date, gecc, extra = 0) {
+  if (!gecc) return 0;
+  if (!state.hasGecc) {
+    state.hasGecc = true;
+    return -gecc;
+  }
+  if (!state.permanent && !isMonthlySpecialDate(date)) state.permanent = true;
+  return state.permanent ? extra - gecc : -gecc;
+}
+
+function historicalPointDocuments(personId) {
+  if (!personId) return [];
+  if (USE_MOCK) {
+    const records = readMockDb().registrosPonto || {};
+    return Object.entries(records)
+      .filter(([id, record]) => record?.uid === personId || id.startsWith(`${personId}_`))
+      .map(([id, record]) => ({ id, ...record }));
+  }
+  return null;
+}
+
+async function loadGeccOpeningState(personId, competencia) {
+  const opening = { hasGecc: false, permanent: false };
+  let documents = historicalPointDocuments(personId);
+  if (documents === null) {
+    try {
+      const snapshot = await getDocs(query(collection(db, "registrosPonto"), where("uid", "==", personId)));
+      documents = snapshot.docs.map((item) => ({ id: item.id, ...item.data() }));
+    } catch (error) {
+      documents = [];
+    }
+  }
+  const cutoff = `${competencia}-01`;
+  const entries = [];
+  documents.forEach((record) => {
+    const recordCompetencia = record.competencia || String(record.id || "").slice(-7);
+    Object.entries(record.dias || {}).forEach(([day, value]) => {
+      const date = value?.data || `${recordCompetencia}-${pad2(day)}`;
+      if (date < cutoff) entries.push({ date, gecc: Number(value?.minutosGecc) || parseTimeMinutes(value?.horasGecc) || 0 });
+    });
+  });
+  entries.sort((a, b) => a.date.localeCompare(b.date)).forEach((entry) => {
+    applyGeccBalanceRule(opening, entry.date, entry.gecc, 0);
+  });
+  return opening;
 }
 
 function monthlyRowHtml(day, record = {}) {
@@ -2573,6 +2624,7 @@ function updateMonthlyTotals() {
 async function loadMonthlyPointRecords(competencia = selectedMonthlyCompetencia) {
   if (!monthlyPersonId()) {
     monthlyPointDays = {};
+    monthlySaldoOpeningState = { hasGecc: false, permanent: false };
     renderMonthlyTableRows();
     return;
   }
@@ -2582,13 +2634,18 @@ async function loadMonthlyPointRecords(competencia = selectedMonthlyCompetencia)
   if (USE_MOCK) {
     const dbData = readMockDb();
     monthlyPointDays = dbData.registrosPonto?.[`${monthlyPersonId()}_${competencia}`]?.dias || {};
+    monthlySaldoOpeningState = await loadGeccOpeningState(monthlyPersonId(), competencia);
     renderMonthlyTableRows();
     return;
   }
 
-  const snap = await getDoc(doc(db, "registrosPonto", `${monthlyPersonId()}_${competencia}`)).catch(() => null);
+  const [snap, openingState] = await Promise.all([
+    getDoc(doc(db, "registrosPonto", `${monthlyPersonId()}_${competencia}`)).catch(() => null),
+    loadGeccOpeningState(monthlyPersonId(), competencia)
+  ]);
   if (monthlyLoadingCompetencia !== loadingKey) return;
   monthlyPointDays = snap?.exists() ? snap.data()?.dias || {} : {};
+  monthlySaldoOpeningState = openingState;
   renderMonthlyTableRows();
 }
 
@@ -2903,7 +2960,8 @@ async function syncReportLocalData(ym) {
     lotacao: currentUser?.lotacao || ""
   };
   const key = `${reportUserKey(perfilSnapshot)}_${ym}`;
-  const docData = { perfilSnapshot, dias: {} };
+  const saldoOpeningState = await loadGeccOpeningState(currentPersonId(), ym);
+  const docData = { perfilSnapshot, dias: {}, saldoOpeningState };
 
   if (USE_MOCK) {
     const dbData = readMockDb();

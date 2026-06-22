@@ -583,7 +583,10 @@ tfoot td.total-value{
   let totalGecc = 0;
   let totalExtras = 0;
   let totalSaldo = 0;
-  let hasPreviousGecc = false;
+  const saldoState = {
+    hasGecc: !!doc.saldoOpeningState?.hasGecc,
+    permanent: !!doc.saldoOpeningState?.permanent
+  };
 
   for(let d=1; d<=31; d++){
     if(d > diasNoMes) continue;
@@ -601,8 +604,13 @@ tfoot td.total-value{
       : Math.min(Math.max(0, worked - 480), 120);
     let saldo = 0;
     if(gecc > 0){
-      saldo = !hasPreviousGecc || isHoliday || isWeekend ? -gecc : extras - gecc;
-      hasPreviousGecc = true;
+      if(!saldoState.hasGecc){
+        saldoState.hasGecc = true;
+        saldo = -gecc;
+      }else{
+        if(!saldoState.permanent && !isHoliday && !isWeekend) saldoState.permanent = true;
+        saldo = saldoState.permanent ? extras - gecc : -gecc;
+      }
     }
 
     totalGecc += gecc;
