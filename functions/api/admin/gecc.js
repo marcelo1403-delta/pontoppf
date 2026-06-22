@@ -14,9 +14,10 @@ export async function onRequest(context) {
   const entrada = String(input?.entrada || "").trim();
   const saida = String(input?.saida || "").trim();
   const requestedGecc = String(input?.gecc || "").trim();
-  const geccMinutes = scheduleMode ? interval(entrada, saida, true) : (parseMinutes(requestedGecc) ?? (requestedGecc ? null : 0));
+  const geccMinutes = scheduleMode ? interval(entrada, saida, false) : (parseMinutes(requestedGecc) ?? (requestedGecc ? null : 0));
   const partial = Boolean(entrada) !== Boolean(saida);
   if ((scheduleMode && (partial || (entrada && geccMinutes <= 0))) || geccMinutes === null) return json({ error: "Dados de GECC inválidos." }, 400);
+  if (scheduleMode && [entrada, saida].some((value) => (parseMinutes(value) ?? 0) > 22 * 60)) return json({ error: "Nenhum horário pode ser posterior às 22:00." }, 400);
   if (!targetUid || !/^\d{4}-\d{2}-\d{2}$/.test(date) || geccMinutes === null) return json({ error: "Dados de GECC inválidos." }, 400);
   const config = {
     projectId: context.env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID,

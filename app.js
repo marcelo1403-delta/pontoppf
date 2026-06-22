@@ -842,8 +842,8 @@ function configureMonthlyTableStructure() {
   const foot = $("tfoot", table);
   if (!table || !head || !foot) return;
   head.innerHTML = `
-    <tr><th class="cDay hNeutral" rowspan="2">DIA</th><th class="cEdit hNeutral" rowspan="2">EDT</th><th class="hExp1" colspan="2">1º EXP</th><th class="hExp2" colspan="2">2º EXP</th><th class="hNight" colspan="2">NOTURNO</th><th class="hTotals" colspan="3">TOTAIS HORAS</th></tr>
-    <tr><th class="cTime hExp1">E1</th><th class="cTime hExp1">S1</th><th class="cTime hExp2">E2</th><th class="cTime hExp2">S2</th><th class="cTime hNight">E3</th><th class="cTime hNight">S3</th><th class="cTotal hTotals">GEC</th><th class="cTotal hTotals">EXT</th><th class="cTotal hTotals">SLD</th></tr>`;
+    <tr><th class="cDay hNeutral" rowspan="2">DIA</th><th class="cEdit hNeutral" rowspan="2">EDT</th><th class="hExp1" colspan="2">1º EXP</th><th class="hExp2" colspan="2">2º EXP</th><th class="hNight" colspan="2">GECC</th><th class="hTotals" colspan="3">TOTAIS HORAS</th></tr>
+    <tr><th class="cTime hExp1">E1</th><th class="cTime hExp1">S1</th><th class="cTime hExp2">E2</th><th class="cTime hExp2">S2</th><th class="cTime hNight">E3</th><th class="cTime hNight">S3</th><th class="cTotal hTotals">GECC</th><th class="cTotal hTotals">EXT</th><th class="cTotal hTotals">SLD</th></tr>`;
   foot.innerHTML = `<tr><td colspan="8" class="monthlyTotalLabel">TOTAIS</td><td><span class="monthlyValue">00:00</span></td><td><span class="monthlyValue">00:00</span></td><td><span class="monthlyValue">00:00</span></td></tr>`;
 }
 
@@ -1199,7 +1199,7 @@ function geccDayMinutes() {
   const start = parseTimeMinutes(dailyGeccValues.e1);
   const end = parseTimeMinutes(dailyGeccValues.s1);
   if (start === null || end === null) return 0;
-  return end <= start ? (24 * 60 - start) + end : end - start;
+  return end > start ? end - start : 0;
 }
 
 function normalDayMinutes() {
@@ -1324,6 +1324,7 @@ function validatePointTimes(data, options = {}) {
   if (data.e3 && !data.s3) add("Na GECC o horário inicial está preenchido, mas o final está vazio.", ["e3"]);
   if (options.shift !== "noturno" && e1 !== null && s1 !== null && s1 <= e1) add("1º expediente: a saída deve ser maior que a entrada.", ["s1"]);
   if (e2 !== null && s2 !== null && s2 <= e2) add("2º expediente: a saída deve ser maior que a entrada.", ["s2"]);
+  if (e3 !== null && s3 !== null && s3 <= e3) add("GECC: S3 deve ser maior que E3.", ["s3"]);
 
   const firstTimes = [e1, s1].filter((value) => value !== null);
   const secondTimes = [e2, s2].filter((value) => value !== null);
@@ -1341,7 +1342,8 @@ function validatePointTimes(data, options = {}) {
   }
   [
     ["e1", e1, "A entrada do 1º expediente"], ["s1", s1, "A saída do 1º expediente"],
-    ["e2", e2, "A entrada do 2º expediente"], ["s2", s2, "A saída do 2º expediente"]
+    ["e2", e2, "A entrada do 2º expediente"], ["s2", s2, "A saída do 2º expediente"],
+    ["e3", e3, "O horário E3 da GECC"], ["s3", s3, "O horário S3 da GECC"]
   ].forEach(([field, value, label]) => {
     if (value !== null && value > 22 * 60) add(`${label} não pode ser posterior às 22:00.`, [field]);
   });
@@ -1355,6 +1357,7 @@ function validatePointTimes(data, options = {}) {
   const gecc = parseTimeMinutes(data.gecc) || 0;
   const extraFields = options.excludeThirdFromWorked ? ["e1", "s1", "e2", "s2"] : ["e1", "s1", "e2", "s2", "e3", "s3"];
   if (!options.specialDate && extra > 2 * 60) add("As horas extras não podem ultrapassar 02 horas.", extraFields.filter((field) => data[field]));
+  if (options.specialDate && worked > 2 * 60) add("Em fins de semana e feriados, o registro não pode ultrapassar 02 horas trabalhadas.", extraFields.filter((field) => data[field]));
   if (gecc > worked) add("As horas de GECC não podem ultrapassar o número de horas trabalhadas.", ["gecc"]);
 
   const seen = new Set();
@@ -2344,19 +2347,30 @@ function minutesBetween(start, end) {
 
 function monthlyRowData(row) {
   const value = (field) => String(row.querySelector(`[data-monthly-field="${field}"]`)?.value || "").trim();
-  return {
+  const data = {
     e1: value("e1"),
     s1: value("s1"),
     e2: value("e2"),
     s2: value("s2"),
     e3: value("e3"),
-    s3: value("s3"),
-    gecc: value("gecc")
+    s3: value("s3")
   };
+  const calculatedGecc = monthlyGeccMinutes(data);
+  const storedGecc = String(row.querySelector("[data-monthly-total='gecc']")?.textContent || "").trim();
+  data.gecc = data.e3 || data.s3
+    ? (calculatedGecc ? formatMinutes(calculatedGecc) : "")
+    : row.dataset.geccTouched === "1" ? "" : (storedGecc === "00:00" ? "" : storedGecc);
+  return data;
+}
+
+function monthlyGeccMinutes(data) {
+  const start = parseTimeMinutes(data.e3);
+  const end = parseTimeMinutes(data.s3);
+  return start !== null && end !== null && end > start ? end - start : 0;
 }
 
 function monthlyHasAnyTime(data) {
-  return ["e1", "s1", "e2", "s2", "e3", "s3"].some((field) => Boolean(data[field]));
+  return ["e1", "s1", "e2", "s2"].some((field) => Boolean(data[field]));
 }
 
 function monthlyTurnEmpty(data, start, end) {
@@ -2369,7 +2383,7 @@ function monthlyTurnComplete(data, start, end) {
 
 function monthlyFillStatus(data) {
   if (!monthlyHasAnyTime(data)) return "";
-  const turns = [["e1", "s1"], ["e2", "s2"], ["e3", "s3"]];
+  const turns = [["e1", "s1"], ["e2", "s2"]];
   return turns.every(([start, end]) => monthlyTurnEmpty(data, start, end) || monthlyTurnComplete(data, start, end))
     ? "completo"
     : "incompleto";
@@ -2395,7 +2409,7 @@ function monthlyValidationErrors(date, data, row = null) {
       s2: target("s2"),
       e3: target("e3"),
       s3: target("s3"),
-      gecc: target("gecc")
+      gecc: target("e3")
     }
   });
 }
@@ -2411,8 +2425,8 @@ function monthlyDayPayload(date, data) {
   return {
     data: date,
     turno: nightOnly ? "noturno" : hasNight ? "misto" : "diurno",
-    entrada1: nightOnly ? data.e3 : data.e1,
-    saida1: nightOnly ? data.s3 : data.s1,
+    entrada1: data.e1,
+    saida1: data.s1,
     entrada2: data.e2,
     saida2: data.s2,
     entradaNoturna: data.e3,
@@ -2444,7 +2458,8 @@ function monthlySetRowEditing(row, editing) {
   row.classList.toggle("monthlyEditing", editing);
   row.querySelectorAll(".monthlyTimeInput").forEach((input) => {
     const field = input.dataset.monthlyField;
-    const allowed = field === "gecc" ? canManageUsers() : !isManagingAnotherMonthlyPerson();
+    const geccField = field === "e3" || field === "s3";
+    const allowed = geccField ? canManageUsers() : !isManagingAnotherMonthlyPerson();
     input.disabled = !editing || !allowed;
   });
   const button = row.querySelector(".monthlyEditBtn");
@@ -2481,14 +2496,15 @@ function monthlyUpdateRowState(row) {
       row.querySelector('[data-monthly-field="e3"]')?.classList.add("monthlySaved");
       row.querySelector('[data-monthly-field="s3"]')?.classList.add("monthlySaved");
     }
-    if (data.gecc && parseTimeMinutes(data.gecc) !== null) row.querySelector('[data-monthly-field="gecc"]')?.classList.add("monthlySaved");
   }
 
   const extra = monthlyExtraMinutes(date, data);
   const saldo = monthlySaldoMinutes(date, data);
+  const geccEl = row.querySelector("[data-monthly-total='gecc']");
   const extraEl = row.querySelector("[data-monthly-total='extra']");
   const saldoEl = row.querySelector("[data-monthly-total='saldo']");
   if (extraEl) extraEl.textContent = formatMinutes(extra);
+  if (geccEl) geccEl.textContent = data.gecc || "00:00";
   if (saldoEl) {
     saldoEl.textContent = formatSignedMinutes(saldo);
     saldoEl.classList.toggle("negative", saldo < 0);
@@ -2572,7 +2588,7 @@ function monthlyRowHtml(day, record = {}) {
       <td class="cTime"><input class="monthlyTimeInput" data-monthly-field="s2" placeholder="--:--" inputmode="numeric" maxlength="5" value="${value("s2")}" disabled></td>
       <td class="cTime cNight"><input class="monthlyTimeInput" data-monthly-field="e3" placeholder="--:--" inputmode="numeric" maxlength="5" value="${value("e3")}" disabled></td>
       <td class="cTime cNight"><input class="monthlyTimeInput" data-monthly-field="s3" placeholder="--:--" inputmode="numeric" maxlength="5" value="${value("s3")}" disabled></td>
-      <td class="cTotal"><input class="monthlyTimeInput" data-monthly-field="gecc" placeholder="--:--" inputmode="numeric" maxlength="5" value="${value("gecc")}" disabled></td>
+      <td class="cTotal"><span class="monthlyValue" data-monthly-total="gecc">${value("gecc") || "00:00"}</span></td>
       <td class="cTotal"><span class="monthlyValue" data-monthly-total="extra">00:00</span></td>
       <td class="cTotal"><span class="monthlyValue" data-monthly-total="saldo">00:00</span></td>
     </tr>
@@ -2661,9 +2677,9 @@ async function saveMonthlyRow(row, options = {}) {
   const rawData = monthlyRowData(row);
   const existingData = monthlyRecordData(monthlyPointDays?.[dayKey] || {});
   const data = isManagingAnotherMonthlyPerson()
-    ? { ...existingData, gecc: rawData.gecc }
+    ? { ...existingData, e3: rawData.e3, s3: rawData.s3, gecc: rawData.gecc }
     : !canManageUsers()
-      ? { ...rawData, gecc: existingData.gecc }
+      ? { ...rawData, e3: existingData.e3, s3: existingData.s3, gecc: existingData.gecc }
       : rawData;
   Object.entries(data).forEach(([field, value]) => {
     const input = row.querySelector(`[data-monthly-field="${field}"]`);
@@ -2726,7 +2742,7 @@ async function saveMonthlyRow(row, options = {}) {
       };
       writeMockDb(dbData);
     } else if (isManagingAnotherMonthlyPerson()) {
-      await saveManagedGecc(monthlyPersonId(), date, dayPayload.horasGecc);
+      await saveManagedGecc(monthlyPersonId(), date, dayPayload.entradaNoturna, dayPayload.saidaNoturna);
     } else {
       const ref = doc(db, "registrosPonto", recordId);
       const snap = await getDoc(ref).catch(() => null);
@@ -2746,6 +2762,7 @@ async function saveMonthlyRow(row, options = {}) {
     }
 
     monthlyPointDays = { ...(monthlyPointDays || {}), [dayKey]: dayPayload };
+    delete row.dataset.geccTouched;
     if (monthlyPersonId() === dailyPersonId() && competencia === selectedCompetencia()) {
       currentMonthPointDays = { ...(currentMonthPointDays || {}), [dayKey]: dayPayload };
       if (date === selectedWorkDate()) applyPointRecord(dayPayload);
@@ -3900,6 +3917,7 @@ function bindNavigation() {
     if (!input) return;
     input.value = formatTime(input.value);
     const row = input.closest("tr");
+    if (["e3", "s3"].includes(input.dataset.monthlyField)) row.dataset.geccTouched = "1";
     monthlyUpdateRowState(row);
     updateMonthlyTotals();
   });
