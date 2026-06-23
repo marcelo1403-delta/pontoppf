@@ -66,11 +66,12 @@ let currentMonthPointDays = {};
 let monthlyPointDays = {};
 let monthlyLoadingCompetencia = "";
 let monthlySaldoOpeningState = { hasGecc: false, permanent: false };
+let monthlyTableMode = "normal";
 let selectedDailyShift = "diurno";
 let savedDailyShift = "diurno";
 let pendingDailyShiftChange = false;
 let dailyNormalValues = { e1: "", s1: "", e2: "", s2: "" };
-let dailyGeccValues = { e1: "", s1: "" };
+let dailyGeccValues = { e1: "", s1: "", e2: "", s2: "" };
 let selectedDailyPerson = null;
 let selectedMonthlyPerson = null;
 
@@ -633,6 +634,7 @@ function enhanceDailyRegisterLayout() {
   const dateSide = $(".dateSide", dateLine);
   const personSide = $(".daySide", dateLine);
   const saveButton = byId("savePointBtn");
+  const existingShiftTabs = $(".dailyShiftTabs", dailyView);
   const pointCard = $(".card.registerPointPanel", dailyView);
   const firstCard = $(".expCard.first", pointCard);
   const secondCard = $(".expCard.second", pointCard);
@@ -642,10 +644,12 @@ function enhanceDailyRegisterLayout() {
   dateSide.classList.add("dailyMiniBanner");
   personSide.classList.add("dailyMiniBanner", "dailyPersonBanner");
 
-  const saveRow = document.createElement("div");
-  saveRow.className = "dailySaveRow registerPointPanel";
-  dateLine.insertAdjacentElement("afterend", saveRow);
-  saveRow.appendChild(saveButton);
+  if (!existingShiftTabs) {
+    const saveRow = document.createElement("div");
+    saveRow.className = "dailySaveRow registerPointPanel";
+    dateLine.insertAdjacentElement("afterend", saveRow);
+    saveRow.appendChild(saveButton);
+  }
 
   personSide.innerHTML = `
     <span class="dailyPersonContent">
@@ -654,14 +658,16 @@ function enhanceDailyRegisterLayout() {
       <select id="dailyPersonSelect" class="dailyPersonSelect" aria-label="Usuário do registro diário"></select>
     </span>`;
 
-  const shiftTabs = document.createElement("section");
-  shiftTabs.className = "dailyShiftTabs registerPointPanel";
-  shiftTabs.setAttribute("aria-label", "Turno do registro diário");
-  shiftTabs.innerHTML = `
-    <button class="dailyShiftTab active" type="button" data-daily-shift="diurno">FOLHA NORMAL</button>
-    <button class="dailyShiftTab" type="button" data-daily-shift="noturno">GECC</button>`;
-  shiftTabs.appendChild(saveButton);
-  pointCard.insertAdjacentElement("beforebegin", shiftTabs);
+  const shiftTabs = existingShiftTabs || document.createElement("section");
+  if (!existingShiftTabs) {
+    shiftTabs.className = "dailyShiftTabs registerPointPanel";
+    shiftTabs.setAttribute("aria-label", "Turno do registro diário");
+    shiftTabs.innerHTML = `
+      <button class="dailyShiftTab active" type="button" data-daily-shift="diurno">FOLHA NORMAL</button>
+      <button class="dailyShiftTab" type="button" data-daily-shift="noturno">GECC</button>`;
+    shiftTabs.appendChild(saveButton);
+    pointCard.insertAdjacentElement("beforebegin", shiftTabs);
+  }
   $(".geccRow", dailyView)?.remove();
 
   firstCard.id = "dailyFirstCard";
@@ -777,8 +783,9 @@ function selectDailyShift(shift, options = {}) {
   const secondCard = byId("dailySecondCard");
   const title = byId("dailyFirstCardTitle");
   firstCard?.classList.toggle("night", nextShift === "noturno");
-  secondCard?.classList.toggle("hidden", nextShift === "noturno");
-  if (title) title.textContent = nextShift === "noturno" ? "HORÁRIO" : "1º EXPEDIENTE";
+  secondCard?.classList.toggle("night", nextShift === "noturno");
+  secondCard?.classList.remove("hidden");
+  if (title) title.textContent = "1º EXPEDIENTE";
   renderActiveDailyValues();
   updateSaveButtonState();
   syncTimeAvailability();
@@ -794,7 +801,10 @@ function applyDailyPermissions() {
 
 function captureActiveDailyValues() {
   if (selectedDailyShift === "noturno") {
-    dailyGeccValues = { e1: timeText("entrada1View"), s1: timeText("saida1View") };
+    dailyGeccValues = {
+      e1: timeText("entrada1View"), s1: timeText("saida1View"),
+      e2: timeText("entrada2View"), s2: timeText("saida2View")
+    };
     return;
   }
   dailyNormalValues = {
@@ -805,7 +815,7 @@ function captureActiveDailyValues() {
 
 function renderActiveDailyValues() {
   const values = selectedDailyShift === "noturno"
-    ? { entrada1View: dailyGeccValues.e1, saida1View: dailyGeccValues.s1, entrada2View: "", saida2View: "" }
+    ? { entrada1View: dailyGeccValues.e1, saida1View: dailyGeccValues.s1, entrada2View: dailyGeccValues.e2, saida2View: dailyGeccValues.s2 }
     : { entrada1View: dailyNormalValues.e1, saida1View: dailyNormalValues.s1, entrada2View: dailyNormalValues.e2, saida2View: dailyNormalValues.s2 };
   Object.entries(values).forEach(([id, value]) => {
     const input = byId(id);
@@ -817,6 +827,9 @@ function enhanceMonthlyRegisterLayout() {
   const top = $("#registro-mensal .monthlyTop");
   const monthBox = $(".monthlySelectBox", top);
   const holidayButton = byId("monthlyHolidayToggle");
+  ensureMonthlyModeTabs();
+  configureMonthlyTableStructure();
+  setMonthlyTableMode(monthlyTableMode);
   if (!top || !monthBox || !holidayButton || byId("monthlyPersonSelect")) return;
 
   holidayButton.classList.add("monthlyHolidayMiniButton");
@@ -831,20 +844,109 @@ function enhanceMonthlyRegisterLayout() {
       <select id="monthlyPersonSelect" class="monthlyPersonSelect" aria-label="Usuário do registro mensal"></select>
     </span>`;
   top.appendChild(personBox);
-  configureMonthlyTableStructure();
   byId("monthlyPersonSelect")?.addEventListener("change", handleMonthlyPersonChange);
   window.addEventListener("resize", fitMonthlyPersonName);
 }
 
+function ensureMonthlyModeTabs() {
+  const monthly = byId("registro-mensal");
+  const wrap = $("#registro-mensal .monthlyTableWrap");
+  if (!monthly || !wrap || byId("monthlyModeTabs")) return;
+  const tabs = document.createElement("section");
+  tabs.id = "monthlyModeTabs";
+  tabs.className = "monthlyModeTabs";
+  tabs.innerHTML = `
+    <button class="monthlyModeTab active" type="button" data-monthly-mode="normal">Folha Normal</button>
+    <button class="monthlyModeTab" type="button" data-monthly-mode="gecc">GECC</button>
+    <button class="monthlyModeTab" type="button" data-monthly-mode="saldo">Saldo</button>`;
+  wrap.parentNode.insertBefore(tabs, wrap);
+}
+
+function setMonthlyTableMode(mode = "normal") {
+  monthlyTableMode = ["normal", "gecc", "saldo"].includes(mode) ? mode : "normal";
+  const table = $("#registro-mensal .monthlyTable");
+  if (table) {
+    table.classList.remove("mode-normal", "mode-gecc", "mode-saldo", "hideNormal", "hideGecc");
+    table.classList.add(`mode-${monthlyTableMode}`);
+  }
+  $$("#monthlyModeTabs .monthlyModeTab").forEach((button) => {
+    button.classList.toggle("active", button.dataset.monthlyMode === monthlyTableMode);
+  });
+  configureMonthlyTableStructure();
+  updateMonthlyTotals();
+}
+
 function configureMonthlyTableStructure() {
   const table = $("#registro-mensal .monthlyTable");
-  const head = $("thead", table);
-  const foot = $("tfoot", table);
-  if (!table || !head || !foot) return;
+  if (!table) return;
+  const head = table.querySelector("thead");
+  const foot = table.querySelector("tfoot");
+  const body = table.querySelector("tbody");
+  if (!head || !foot || !body) return;
+  const mode = monthlyTableMode || "normal";
+  table.classList.remove("mode-normal", "mode-gecc", "mode-saldo", "hideNormal", "hideGecc");
+  table.classList.add(`mode-${mode}`);
+
+  if (mode === "gecc") {
+    head.innerHTML = `
+      <tr>
+        <th class="cDay hNeutral" rowspan="2">DIA</th>
+        <th class="cEdit hNeutral" rowspan="2">EDT</th>
+        <th class="hGeccExp1 geccCol" colspan="2">1º EXPEDIENTE</th>
+        <th class="hGeccExp2 geccCol" colspan="2">2º EXPEDIENTE</th>
+        <th class="hGeccTotal geccCol" rowspan="2">TOTAL</th>
+      </tr>
+      <tr>
+        <th class="cTime hGeccExp1 geccCol geccDetailCol">E1</th>
+        <th class="cTime hGeccExp1 geccCol geccDetailCol">S1</th>
+        <th class="cTime hGeccExp2 geccCol geccDetailCol">E2</th>
+        <th class="cTime hGeccExp2 geccCol geccDetailCol">S2</th>
+      </tr>`;
+    foot.innerHTML = `<tr>
+      <td colspan="6" class="monthlyTotalLabel">TOTAIS</td>
+      <td class="geccCol geccTotalCol"><span class="monthlyValue geccValue" data-monthly-footer="gecc">00:00</span></td>
+    </tr>`;
+    return;
+  }
+
+  if (mode === "saldo") {
+    head.innerHTML = `
+      <tr>
+        <th class="cDay hNeutral">DIA</th>
+        <th class="cEdit hNeutral">EDT</th>
+        <th class="hExtra extraCol">EXTRAS</th>
+        <th class="hGeccTotal geccTotalCol">GECC</th>
+        <th class="hSaldo saldoCol">SALDO</th>
+      </tr>`;
+    foot.innerHTML = `<tr>
+      <td colspan="2" class="monthlyTotalLabel">TOTAIS</td>
+      <td class="extraCol"><span class="monthlyValue extraValue" data-monthly-footer="extra">00:00</span></td>
+      <td class="geccTotalCol"><span class="monthlyValue geccValue" data-monthly-footer="gecc">00:00</span></td>
+      <td class="saldoCol"><span class="monthlyValue saldoValue" data-monthly-footer="saldo">00:00</span></td>
+    </tr>`;
+    return;
+  }
+
   head.innerHTML = `
-    <tr><th class="cDay hNeutral" rowspan="2">DIA</th><th class="cEdit hNeutral" rowspan="2">EDT</th><th class="hExp1" colspan="2">1º EXP</th><th class="hExp2" colspan="2">2º EXP</th><th class="hNight" colspan="2">GECC</th><th class="hTotals" colspan="3">TOTAIS HORAS</th></tr>
-    <tr><th class="cTime hExp1">E1</th><th class="cTime hExp1">S1</th><th class="cTime hExp2">E2</th><th class="cTime hExp2">S2</th><th class="cTime hNight">E3</th><th class="cTime hNight">S3</th><th class="cTotal hTotals">GECC</th><th class="cTotal hTotals">EXT</th><th class="cTotal hTotals">SLD</th></tr>`;
-  foot.innerHTML = `<tr><td colspan="8" class="monthlyTotalLabel">TOTAIS</td><td><span class="monthlyValue">00:00</span></td><td><span class="monthlyValue">00:00</span></td><td><span class="monthlyValue">00:00</span></td></tr>`;
+    <tr>
+      <th class="cDay hNeutral" rowspan="2">DIA</th>
+      <th class="cEdit hNeutral" rowspan="2">EDT</th>
+      <th class="hExp1 normalCol" colspan="2">1º EXPEDIENTE</th>
+      <th class="hExp2 normalCol" colspan="2">2º EXPEDIENTE</th>
+      <th class="hNormalTotal normalCol normalTotalCol" rowspan="2">TOTAL</th>
+      <th class="hExtra normalCol extraCol" rowspan="2">EXTRAS</th>
+    </tr>
+    <tr>
+      <th class="cTime hExp1 normalCol normalDetailCol">E1</th>
+      <th class="cTime hExp1 normalCol normalDetailCol">S1</th>
+      <th class="cTime hExp2 normalCol normalDetailCol">E2</th>
+      <th class="cTime hExp2 normalCol normalDetailCol">S2</th>
+    </tr>`;
+  foot.innerHTML = `<tr>
+    <td colspan="6" class="monthlyTotalLabel">TOTAIS</td>
+    <td class="normalCol normalTotalCol"><span class="monthlyValue normalTotalValue" data-monthly-footer="normal">00:00</span></td>
+    <td class="normalCol extraCol"><span class="monthlyValue extraValue" data-monthly-footer="extra">00:00</span></td>
+  </tr>`;
 }
 
 function initializeMonthlyPersonControl() {
@@ -1004,7 +1106,9 @@ function allDailyTimeValues() {
     "diurno:entrada2View": dailyNormalValues.e2,
     "diurno:saida2View": dailyNormalValues.s2,
     "noturno:entrada1View": dailyGeccValues.e1,
-    "noturno:saida1View": dailyGeccValues.s1
+    "noturno:saida1View": dailyGeccValues.s1,
+    "noturno:entrada2View": dailyGeccValues.e2,
+    "noturno:saida2View": dailyGeccValues.s2
   };
 }
 
@@ -1196,10 +1300,7 @@ function workedDayMinutes() {
 
 function geccDayMinutes() {
   captureActiveDailyValues();
-  const start = parseTimeMinutes(dailyGeccValues.e1);
-  const end = parseTimeMinutes(dailyGeccValues.s1);
-  if (start === null || end === null) return 0;
-  return end > start ? end - start : 0;
+  return minutesBetween(dailyGeccValues.e1, dailyGeccValues.s1) + minutesBetween(dailyGeccValues.e2, dailyGeccValues.s2);
 }
 
 function normalDayMinutes() {
@@ -1219,6 +1320,7 @@ function updateDaySummary() {
   if (byId("worked")) byId("worked").textContent = formatMinutes(workedMinutes);
   if (byId("normal")) byId("normal").textContent = formatMinutes(normalMinutes);
   if (byId("extra")) byId("extra").textContent = formatMinutes(extraMinutes);
+  if (byId("geccSummary")) byId("geccSummary").textContent = formatMinutes(geccDayMinutes());
 }
 
 function syncTimeAvailability() {
@@ -1228,8 +1330,8 @@ function syncTimeAvailability() {
 
   setTimeDisabled(timeInput("entrada1View"), !canEditCurrentView);
   setTimeDisabled(timeInput("saida1View"), !canEditCurrentView || !hasTime("entrada1View"));
-  setTimeDisabled(timeInput("entrada2View"), !canEditCurrentView || geccView || firstPartial);
-  setTimeDisabled(timeInput("saida2View"), !canEditCurrentView || geccView || firstPartial || !hasTime("entrada2View"));
+  setTimeDisabled(timeInput("entrada2View"), !canEditCurrentView || firstPartial);
+  setTimeDisabled(timeInput("saida2View"), !canEditCurrentView || firstPartial || !hasTime("entrada2View"));
 }
 
 function validateTimeFlow() {
@@ -1305,7 +1407,7 @@ function validatePointTimes(data, options = {}) {
   const errors = [];
   const add = (message, fields = []) => errors.push(pointValidationItem(message, fields, fieldTargets));
 
-  ["e1", "s1", "e2", "s2", "e3", "s3", "gecc"].forEach((field) => {
+  ["e1", "s1", "e2", "s2", "e3", "s3", "e4", "s4", "gecc"].forEach((field) => {
     if (data[field] && parseTimeMinutes(data[field]) === null) add("Preencha o horário no formato 00:00.", [field]);
   });
 
@@ -1315,20 +1417,25 @@ function validatePointTimes(data, options = {}) {
   const s2 = parseTimeMinutes(data.s2);
   const e3 = parseTimeMinutes(data.e3);
   const s3 = parseTimeMinutes(data.s3);
+  const e4 = parseTimeMinutes(data.e4);
+  const s4 = parseTimeMinutes(data.s4);
 
   if (data.s1 && !data.e1) add("No 1º expediente a saída está preenchida mas a entrada está vazia.", ["s1"]);
   if (data.e1 && !data.s1) add("No 1º expediente a entrada está preenchida mas a saída está vazia.", ["e1"]);
   if (data.s2 && !data.e2) add("No 2º expediente a saída está preenchida mas a entrada está vazia.", ["s2"]);
   if (data.e2 && !data.s2) add("No 2º expediente a entrada está preenchida mas a saída está vazia.", ["e2"]);
-  if (data.s3 && !data.e3) add("Na GECC o horário final está preenchido, mas o inicial está vazio.", ["s3"]);
-  if (data.e3 && !data.s3) add("Na GECC o horário inicial está preenchido, mas o final está vazio.", ["e3"]);
+  if (data.s3 && !data.e3) add("Na GECC do 1º expediente a saída está preenchida, mas a entrada está vazia.", ["s3"]);
+  if (data.e3 && !data.s3) add("Na GECC do 1º expediente a entrada está preenchida, mas a saída está vazia.", ["e3"]);
+  if (data.s4 && !data.e4) add("Na GECC do 2º expediente a saída está preenchida, mas a entrada está vazia.", ["s4"]);
+  if (data.e4 && !data.s4) add("Na GECC do 2º expediente a entrada está preenchida, mas a saída está vazia.", ["e4"]);
   if (options.shift !== "noturno" && e1 !== null && s1 !== null && s1 <= e1) add("1º expediente: a saída deve ser maior que a entrada.", ["s1"]);
   if (e2 !== null && s2 !== null && s2 <= e2) add("2º expediente: a saída deve ser maior que a entrada.", ["s2"]);
-  if (e3 !== null && s3 !== null && s3 <= e3) add("GECC: S3 deve ser maior que E3.", ["s3"]);
+  if (e3 !== null && s3 !== null && s3 <= e3) add("GECC 1º expediente: saída deve ser maior que entrada.", ["s3"]);
+  if (e4 !== null && s4 !== null && s4 <= e4) add("GECC 2º expediente: saída deve ser maior que entrada.", ["s4"]);
 
   const firstTimes = [e1, s1].filter((value) => value !== null);
   const secondTimes = [e2, s2].filter((value) => value !== null);
-  const thirdTimes = [e3, s3].filter((value) => value !== null);
+  const thirdTimes = [e3, s3, e4, s4].filter((value) => value !== null);
   const firstPartial = firstTimes.length === 1;
   const secondPartial = secondTimes.length === 1;
   if (secondTimes.length && firstPartial) {
@@ -1343,7 +1450,8 @@ function validatePointTimes(data, options = {}) {
   [
     ["e1", e1, "A entrada do 1º expediente"], ["s1", s1, "A saída do 1º expediente"],
     ["e2", e2, "A entrada do 2º expediente"], ["s2", s2, "A saída do 2º expediente"],
-    ["e3", e3, "O horário E3 da GECC"], ["s3", s3, "O horário S3 da GECC"]
+    ["e3", e3, "A entrada do 1º expediente da GECC"], ["s3", s3, "A saída do 1º expediente da GECC"],
+    ["e4", e4, "A entrada do 2º expediente da GECC"], ["s4", s4, "A saída do 2º expediente da GECC"]
   ].forEach(([field, value, label]) => {
     if (value !== null && value > 22 * 60) add(`${label} não pode ser posterior às 22:00.`, [field]);
   });
@@ -1351,14 +1459,15 @@ function validatePointTimes(data, options = {}) {
   if (e3 !== null && daytimeTimes.length && e3 <= Math.max(...daytimeTimes)) {
     add("O horário inicial da GECC deve ser posterior ao término da folha normal.", ["e3"]);
   }
+  if (s3 !== null && e4 !== null && e4 < s3 + 60) {
+    add("A entrada do 2º expediente da GECC deve respeitar intervalo mínimo de 1 hora após a saída do 1º expediente da GECC.", ["e4"]);
+  }
 
   const worked = pointDataWorkedMinutes(data, options);
   const extra = pointDataExtraMinutes(data, options);
-  const gecc = parseTimeMinutes(data.gecc) || 0;
+  const gecc = monthlyGeccMinutes(data);
   const extraFields = options.excludeThirdFromWorked ? ["e1", "s1", "e2", "s2"] : ["e1", "s1", "e2", "s2", "e3", "s3"];
-  if (!options.specialDate && extra > 2 * 60) add("As horas extras não podem ultrapassar 02 horas.", extraFields.filter((field) => data[field]));
-  if (options.specialDate && worked > 2 * 60) add("Em fins de semana e feriados, o registro não pode ultrapassar 02 horas trabalhadas.", extraFields.filter((field) => data[field]));
-  if (gecc > worked) add("As horas de GECC não podem ultrapassar o número de horas trabalhadas.", ["gecc"]);
+  if (!options.specialDate && worked > 10 * 60) add("Em dias úteis, a folha normal não pode ultrapassar 10 horas trabalhadas.", extraFields.filter((field) => data[field]));
 
   const seen = new Set();
   return errors.filter((item) => {
@@ -1379,6 +1488,8 @@ function pointValidationErrors() {
     s2: dailyNormalValues.s2,
     e3: dailyGeccValues.e1,
     s3: dailyGeccValues.s1,
+    e4: dailyGeccValues.e2,
+    s4: dailyGeccValues.s2,
     gecc: geccMinutes ? formatMinutes(geccMinutes) : ""
   }, {
     specialDate: isMonthlySpecialDate(selectedWorkDate()),
@@ -1390,6 +1501,8 @@ function pointValidationErrors() {
       s2: byId("saida2View"),
       e3: byId("entrada1View"),
       s3: byId("saida1View"),
+      e4: byId("entrada2View"),
+      s4: byId("saida2View"),
       gecc: byId("entrada1View")
     }
   });
@@ -1435,6 +1548,8 @@ function timeDayPayload() {
     saida2: dailyNormalValues.s2,
     entradaNoturna: dailyGeccValues.e1,
     saidaNoturna: dailyGeccValues.s1,
+    entradaGecc2: dailyGeccValues.e2,
+    saidaGecc2: dailyGeccValues.s2,
     horasGecc: geccMinutes ? formatMinutes(geccMinutes) : "",
     minutosTrabalhados: workedMinutes,
     minutosNormais: normalMinutes,
@@ -1485,7 +1600,9 @@ function applyPointRecord(record) {
   };
   dailyGeccValues = {
     e1: record?.entradaNoturna || (legacyGeccOnly ? record?.entrada1 : "") || "",
-    s1: record?.saidaNoturna || (legacyGeccOnly ? record?.saida1 : "") || ""
+    s1: record?.saidaNoturna || (legacyGeccOnly ? record?.saida1 : "") || "",
+    e2: record?.entradaGecc2 || "",
+    s2: record?.saidaGecc2 || ""
   };
   savedDailyShift = legacyGeccOnly ? "noturno" : "diurno";
   pendingDailyShiftChange = false;
@@ -2287,6 +2404,7 @@ function renderMonthlyHolidayList() {
 }
 
 function renderMonthlyRegisterControls() {
+  configureMonthlyTableStructure();
   const select = byId("monthlyCompetenciaSelect");
   if (!select) return;
   const current = localDateValue().slice(0, 7);
@@ -2353,20 +2471,20 @@ function monthlyRowData(row) {
     e2: value("e2"),
     s2: value("s2"),
     e3: value("e3"),
-    s3: value("s3")
+    s3: value("s3"),
+    e4: value("e4"),
+    s4: value("s4")
   };
   const calculatedGecc = monthlyGeccMinutes(data);
   const storedGecc = String(row.querySelector("[data-monthly-total='gecc']")?.textContent || "").trim();
-  data.gecc = data.e3 || data.s3
+  data.gecc = data.e3 || data.s3 || data.e4 || data.s4
     ? (calculatedGecc ? formatMinutes(calculatedGecc) : "")
     : row.dataset.geccTouched === "1" ? "" : (storedGecc === "00:00" ? "" : storedGecc);
   return data;
 }
 
 function monthlyGeccMinutes(data) {
-  const start = parseTimeMinutes(data.e3);
-  const end = parseTimeMinutes(data.s3);
-  return start !== null && end !== null && end > start ? end - start : 0;
+  return minutesBetween(data.e3, data.s3) + minutesBetween(data.e4, data.s4);
 }
 
 function monthlyHasAnyTime(data) {
@@ -2409,6 +2527,8 @@ function monthlyValidationErrors(date, data, row = null) {
       s2: target("s2"),
       e3: target("e3"),
       s3: target("s3"),
+      e4: target("e4"),
+      s4: target("s4"),
       gecc: target("e3")
     }
   });
@@ -2418,9 +2538,9 @@ function monthlyDayPayload(date, data) {
   const worked = monthlyWorkedMinutes(data);
   const normal = isMonthlySpecialDate(date) ? 0 : Math.min(worked, 8 * 60);
   const extra = monthlyExtraMinutes(date, data);
-  const gecc = parseTimeMinutes(data.gecc) || 0;
+  const gecc = monthlyGeccMinutes(data);
   const hasDaytime = Boolean(data.e1 || data.s1 || data.e2 || data.s2);
-  const hasNight = Boolean(data.e3 || data.s3);
+  const hasNight = Boolean(data.e3 || data.s3 || data.e4 || data.s4);
   const nightOnly = hasNight && !hasDaytime;
   return {
     data: date,
@@ -2431,7 +2551,9 @@ function monthlyDayPayload(date, data) {
     saida2: data.s2,
     entradaNoturna: data.e3,
     saidaNoturna: data.s3,
-    horasGecc: data.gecc,
+    entradaGecc2: data.e4,
+    saidaGecc2: data.s4,
+    horasGecc: gecc ? formatMinutes(gecc) : "",
     minutosTrabalhados: worked,
     minutosNormais: normal,
     minutosExtras: extra,
@@ -2449,6 +2571,8 @@ function monthlyRecordData(record = {}) {
     s2: record.saida2 || "",
     e3: record.entradaNoturna || (nightRecord ? record.entrada1 : "") || "",
     s3: record.saidaNoturna || (nightRecord ? record.saida1 : "") || "",
+    e4: record.entradaGecc2 || "",
+    s4: record.saidaGecc2 || "",
     gecc: record.horasGecc || ""
   };
 }
@@ -2458,7 +2582,7 @@ function monthlySetRowEditing(row, editing) {
   row.classList.toggle("monthlyEditing", editing);
   row.querySelectorAll(".monthlyTimeInput").forEach((input) => {
     const field = input.dataset.monthlyField;
-    const geccField = field === "e3" || field === "s3";
+    const geccField = field === "e3" || field === "s3" || field === "e4" || field === "s4";
     const allowed = geccField ? canManageUsers() : !isManagingAnotherMonthlyPerson();
     input.disabled = !editing || !allowed;
   });
@@ -2468,6 +2592,23 @@ function monthlySetRowEditing(row, editing) {
     button.innerHTML = editing ? "&#128190;" : "&#9998;";
     button.setAttribute("aria-label", editing ? "Gravar linha" : `Editar dia ${row.dataset.day}`);
   }
+}
+
+function applyMonthlyValueStyle(element, type, minutes = 0) {
+  if (!element) return;
+  element.classList.remove("positive", "zero", "negative", "normalPositive", "extraPositive", "geccPositive");
+  if (minutes < 0) {
+    element.classList.add("negative");
+    return;
+  }
+  if (minutes === 0) {
+    element.classList.add("zero");
+    return;
+  }
+  element.classList.add("positive");
+  if (type === "normal") element.classList.add("normalPositive");
+  if (type === "extra") element.classList.add("extraPositive");
+  if (type === "gecc") element.classList.add("geccPositive");
 }
 
 function monthlyUpdateRowState(row) {
@@ -2496,18 +2637,35 @@ function monthlyUpdateRowState(row) {
       row.querySelector('[data-monthly-field="e3"]')?.classList.add("monthlySaved");
       row.querySelector('[data-monthly-field="s3"]')?.classList.add("monthlySaved");
     }
+    if (monthlyTurnComplete(data, "e4", "s4")) {
+      row.querySelector('[data-monthly-field="e4"]')?.classList.add("monthlySaved");
+      row.querySelector('[data-monthly-field="s4"]')?.classList.add("monthlySaved");
+    }
   }
 
+  const worked = monthlyWorkedMinutes(data);
   const extra = monthlyExtraMinutes(date, data);
   const saldo = monthlySaldoMinutes(date, data);
+  const normalEl = row.querySelector("[data-monthly-total='normal']");
   const geccEl = row.querySelector("[data-monthly-total='gecc']");
   const extraEl = row.querySelector("[data-monthly-total='extra']");
   const saldoEl = row.querySelector("[data-monthly-total='saldo']");
-  if (extraEl) extraEl.textContent = formatMinutes(extra);
-  if (geccEl) geccEl.textContent = data.gecc || "00:00";
+  const gecc = monthlyGeccMinutes(data);
+  if (normalEl) {
+    normalEl.textContent = formatMinutes(worked);
+    applyMonthlyValueStyle(normalEl, "normal", worked);
+  }
+  if (extraEl) {
+    extraEl.textContent = formatMinutes(extra);
+    applyMonthlyValueStyle(extraEl, "extra", extra);
+  }
+  if (geccEl) {
+    geccEl.textContent = gecc ? formatMinutes(gecc) : "00:00";
+    applyMonthlyValueStyle(geccEl, "gecc", gecc);
+  }
   if (saldoEl) {
     saldoEl.textContent = formatSignedMinutes(saldo);
-    saldoEl.classList.toggle("negative", saldo < 0);
+    applyMonthlyValueStyle(saldoEl, "saldo", saldo);
   }
 }
 
@@ -2582,15 +2740,18 @@ function monthlyRowHtml(day, record = {}) {
     <tr class="${weekendClass}" data-day="${pad2(day)}" data-date="${escapeHtml(date)}">
       <td class="cDay"><span class="monthlyDay">${pad2(day)}</span><span class="monthlyWeekday">${escapeHtml(weekday)}${holidayFlag}</span></td>
       <td class="cEdit"><button class="monthlyEditBtn" type="button" aria-label="Editar dia ${pad2(day)}">&#9998;</button></td>
-      <td class="cTime"><input class="monthlyTimeInput" data-monthly-field="e1" placeholder="--:--" inputmode="numeric" maxlength="5" value="${value("e1")}" disabled></td>
-      <td class="cTime"><input class="monthlyTimeInput" data-monthly-field="s1" placeholder="--:--" inputmode="numeric" maxlength="5" value="${value("s1")}" disabled></td>
-      <td class="cTime"><input class="monthlyTimeInput" data-monthly-field="e2" placeholder="--:--" inputmode="numeric" maxlength="5" value="${value("e2")}" disabled></td>
-      <td class="cTime"><input class="monthlyTimeInput" data-monthly-field="s2" placeholder="--:--" inputmode="numeric" maxlength="5" value="${value("s2")}" disabled></td>
-      <td class="cTime cNight"><input class="monthlyTimeInput" data-monthly-field="e3" placeholder="--:--" inputmode="numeric" maxlength="5" value="${value("e3")}" disabled></td>
-      <td class="cTime cNight"><input class="monthlyTimeInput" data-monthly-field="s3" placeholder="--:--" inputmode="numeric" maxlength="5" value="${value("s3")}" disabled></td>
-      <td class="cTotal"><span class="monthlyValue" data-monthly-total="gecc">${value("gecc") || "00:00"}</span></td>
-      <td class="cTotal"><span class="monthlyValue" data-monthly-total="extra">00:00</span></td>
-      <td class="cTotal"><span class="monthlyValue" data-monthly-total="saldo">00:00</span></td>
+      <td class="cTime normalCol normalDetailCol"><input class="monthlyTimeInput" data-monthly-field="e1" placeholder="--:--" inputmode="numeric" maxlength="5" value="${value("e1")}" disabled></td>
+      <td class="cTime normalCol normalDetailCol"><input class="monthlyTimeInput" data-monthly-field="s1" placeholder="--:--" inputmode="numeric" maxlength="5" value="${value("s1")}" disabled></td>
+      <td class="cTime normalCol normalDetailCol"><input class="monthlyTimeInput" data-monthly-field="e2" placeholder="--:--" inputmode="numeric" maxlength="5" value="${value("e2")}" disabled></td>
+      <td class="cTime normalCol normalDetailCol"><input class="monthlyTimeInput" data-monthly-field="s2" placeholder="--:--" inputmode="numeric" maxlength="5" value="${value("s2")}" disabled></td>
+      <td class="cTotal normalCol normalTotalCol"><span class="monthlyValue normalTotalValue" data-monthly-total="normal">00:00</span></td>
+      <td class="cTotal normalCol extraCol"><span class="monthlyValue extraValue" data-monthly-total="extra">00:00</span></td>
+      <td class="cTime cNight geccCol geccDetailCol"><input class="monthlyTimeInput" data-monthly-field="e3" placeholder="--:--" inputmode="numeric" maxlength="5" value="${value("e3")}" disabled></td>
+      <td class="cTime cNight geccCol geccDetailCol"><input class="monthlyTimeInput" data-monthly-field="s3" placeholder="--:--" inputmode="numeric" maxlength="5" value="${value("s3")}" disabled></td>
+      <td class="cTime cNight geccCol geccDetailCol"><input class="monthlyTimeInput" data-monthly-field="e4" placeholder="--:--" inputmode="numeric" maxlength="5" value="${value("e4")}" disabled></td>
+      <td class="cTime cNight geccCol geccDetailCol"><input class="monthlyTimeInput" data-monthly-field="s4" placeholder="--:--" inputmode="numeric" maxlength="5" value="${value("s4")}" disabled></td>
+      <td class="cTotal geccCol geccTotalCol"><span class="monthlyValue geccValue" data-monthly-total="gecc">${value("gecc") || "00:00"}</span></td>
+      <td class="cTotal saldoCol"><span class="monthlyValue saldoValue" data-monthly-total="saldo">00:00</span></td>
     </tr>
   `;
 }
@@ -2599,7 +2760,7 @@ function renderMonthlyTableRows() {
   const body = $(".monthlyTable tbody");
   if (!body) return;
   if (!selectedMonthlyCompetencia) {
-    body.innerHTML = `<tr><td colspan="11" class="monthlyEmptyCompetencia">Nenhuma competência aberta.</td></tr>`;
+    body.innerHTML = `<tr><td colspan="14" class="monthlyEmptyCompetencia">Nenhuma competência aberta.</td></tr>`;
     updateMonthlyTotals();
     return;
   }
@@ -2613,27 +2774,42 @@ function renderMonthlyTableRows() {
 }
 
 function updateMonthlyTotals() {
-  let totalGecc = 0;
+  let totalNormal = 0;
   let totalExtra = 0;
+  let totalGecc = 0;
   let totalSaldo = 0;
   $$(".monthlyTable tbody tr").forEach((row) => {
     const data = monthlyRowData(row);
-    totalGecc += parseTimeMinutes(data.gecc) || 0;
+    totalNormal += monthlyWorkedMinutes(data);
     totalExtra += monthlyExtraMinutes(row.dataset.date, data);
+    totalGecc += monthlyGeccMinutes(data);
     const saldo = monthlySaldoMinutes(row.dataset.date, data);
     totalSaldo += saldo;
     const saldoEl = row.querySelector("[data-monthly-total='saldo']");
     if (saldoEl) {
       saldoEl.textContent = formatSignedMinutes(saldo);
-      saldoEl.classList.toggle("negative", saldo < 0);
+      applyMonthlyValueStyle(saldoEl, "saldo", saldo);
     }
   });
-  const totals = $$(".monthlyTable tfoot .monthlyValue");
-  if (totals[0]) totals[0].textContent = formatMinutes(totalGecc);
-  if (totals[1]) totals[1].textContent = formatMinutes(totalExtra);
-  if (totals[2]) {
-    totals[2].textContent = formatSignedMinutes(totalSaldo);
-    totals[2].classList.toggle("negative", totalSaldo < 0);
+  const normalFooter = $(".monthlyTable tfoot [data-monthly-footer='normal']");
+  const extraFooter = $(".monthlyTable tfoot [data-monthly-footer='extra']");
+  const geccFooter = $(".monthlyTable tfoot [data-monthly-footer='gecc']");
+  const saldoFooter = $(".monthlyTable tfoot [data-monthly-footer='saldo']");
+  if (normalFooter) {
+    normalFooter.textContent = formatMinutes(totalNormal);
+    applyMonthlyValueStyle(normalFooter, "normal", totalNormal);
+  }
+  if (extraFooter) {
+    extraFooter.textContent = formatMinutes(totalExtra);
+    applyMonthlyValueStyle(extraFooter, "extra", totalExtra);
+  }
+  if (geccFooter) {
+    geccFooter.textContent = formatMinutes(totalGecc);
+    applyMonthlyValueStyle(geccFooter, "gecc", totalGecc);
+  }
+  if (saldoFooter) {
+    saldoFooter.textContent = formatSignedMinutes(totalSaldo);
+    applyMonthlyValueStyle(saldoFooter, "saldo", totalSaldo);
   }
 }
 
@@ -2677,9 +2853,9 @@ async function saveMonthlyRow(row, options = {}) {
   const rawData = monthlyRowData(row);
   const existingData = monthlyRecordData(monthlyPointDays?.[dayKey] || {});
   const data = isManagingAnotherMonthlyPerson()
-    ? { ...existingData, e3: rawData.e3, s3: rawData.s3, gecc: rawData.gecc }
+    ? { ...existingData, e3: rawData.e3, s3: rawData.s3, e4: rawData.e4, s4: rawData.s4, gecc: rawData.gecc }
     : !canManageUsers()
-      ? { ...rawData, e3: existingData.e3, s3: existingData.s3, gecc: existingData.gecc }
+      ? { ...rawData, e3: existingData.e3, s3: existingData.s3, e4: existingData.e4, s4: existingData.s4, gecc: existingData.gecc }
       : rawData;
   Object.entries(data).forEach(([field, value]) => {
     const input = row.querySelector(`[data-monthly-field="${field}"]`);
@@ -3900,6 +4076,11 @@ function bindNavigation() {
   byId("monthlyHolidayToggle")?.addEventListener("click", () => toggleMonthlyHolidayPanel());
   byId("monthlyHolidayClose")?.addEventListener("click", () => toggleMonthlyHolidayPanel(false));
   byId("registro-mensal")?.addEventListener("click", async (event) => {
+    const modeButton = event.target.closest("[data-monthly-mode]");
+    if (modeButton) {
+      setMonthlyTableMode(modeButton.dataset.monthlyMode || "normal");
+      return;
+    }
     const button = event.target.closest(".monthlyEditBtn");
     if (!button) return;
     const row = button.closest("tr");
@@ -3917,7 +4098,7 @@ function bindNavigation() {
     if (!input) return;
     input.value = formatTime(input.value);
     const row = input.closest("tr");
-    if (["e3", "s3"].includes(input.dataset.monthlyField)) row.dataset.geccTouched = "1";
+    if (["e3", "s3", "e4", "s4"].includes(input.dataset.monthlyField)) row.dataset.geccTouched = "1";
     monthlyUpdateRowState(row);
     updateMonthlyTotals();
   });
