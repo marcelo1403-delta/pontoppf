@@ -3,6 +3,7 @@ const DEFAULT_API_KEY = "AIzaSyDwC527eWp7Ubwdc0WvBLnSJkvPjfHKZrs";
 const UNIQUE_COLLECTION = "_cadastroUnicos";
 const PEOPLE_COLLECTIONS = ["pessoas", "usuarios", "pedidosInclusao"];
 const ALLOWED_LOTACOES = ["PFBRA", "PFCAT", "PFCG", "PFMOS", "PFPV", "SEDE"];
+const ALLOWED_CARGOS = ["ESPECIALISTA", "PPF", "TECNICO"];
 
 let cachedAccessToken = null;
 let cachedAccessTokenExpiresAt = 0;
@@ -104,7 +105,7 @@ async function handleProfileUpdate(context) {
   if (!profile.nome || profile.nome.replace(/[^A-Z]/g, "").length < 5) errors.push("NOME COMPLETO: informe pelo menos 5 letras");
   if (!isValidCpf(profile.cpf)) errors.push("CPF: número inválido");
   if (onlyDigits(profile.matricula).length < 7) errors.push("MATRICULA: precisa ter 7 ou mais dígitos");
-  if (profile.cargo !== "PPF") errors.push("CARGO: valor inválido");
+  if (!ALLOWED_CARGOS.includes(profile.cargo)) errors.push("CARGO: valor inválido");
   if (!ALLOWED_LOTACOES.includes(profile.lotacao)) errors.push("LOTACAO: valor inválido");
   if (errors.length) return json({ errors }, 400);
 
@@ -163,7 +164,7 @@ function validateInput(profile, senha, confirmaSenha) {
   if (profile.nome.replace(/[^A-Z]/g, "").length < 5) errors.push("NOME COMPLETO: precisa ter 5 ou mais letras");
   if (onlyDigits(profile.matricula).length < 7) errors.push("MATRICULA: precisa ter 7 ou mais dígitos");
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(profile.email)) errors.push("E-MAIL: informe um e-mail válido");
-  if (profile.cargo !== "PPF") errors.push("CARGO: valor inválido");
+  if (!ALLOWED_CARGOS.includes(profile.cargo)) errors.push("CARGO: valor inválido");
   if (!ALLOWED_LOTACOES.includes(profile.lotacao)) errors.push("LOTACAO: valor inválido");
   if (String(senha || "").length < 6) errors.push("SENHA: precisa ter 6 ou mais caracteres");
   if (senha !== confirmaSenha) errors.push("SENHA E CONFIRMAR SENHA: estão diferentes");

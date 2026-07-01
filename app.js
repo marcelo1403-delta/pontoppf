@@ -83,6 +83,7 @@ const PAGE_META = {
 };
 
 const LOTACOES = ["PFBRA", "PFCAT", "PFCG", "PFMOS", "PFPV", "SEDE"];
+const CARGOS = ["ESPECIALISTA", "PPF", "TECNICO"];
 const REQUIRED_USER_FIELDS = ["nome", "cpf", "matricula", "cargo", "lotacao"];
 const MONTH_NAMES = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
 const URL_PARAMS = new URLSearchParams(window.location.search);
@@ -340,6 +341,10 @@ function validateRequiredUserData(user) {
     toast("Informe uma matrícula com pelo menos 7 dígitos.");
     return false;
   }
+  if (!CARGOS.includes(user.cargo)) {
+    toast("Selecione um cargo válido.");
+    return false;
+  }
   if (!LOTACOES.includes(user.lotacao)) {
     toast("Selecione uma lotação válida.");
     return false;
@@ -460,6 +465,14 @@ function collectRegisterErrors(profileData, senha, confirmaSenha) {
 
   if (profileData.email && !isValidEmail(profileData.email)) {
     errors.push("E-MAIL: informe um e-mail válido");
+  }
+
+  if (profileData.cargo && !CARGOS.includes(profileData.cargo)) {
+    errors.push("CARGO: valor inválido");
+  }
+
+  if (profileData.lotacao && !LOTACOES.includes(profileData.lotacao)) {
+    errors.push("LOTACAO: valor inválido");
   }
 
   if (senha && senha.length < 6) {
@@ -3679,7 +3692,7 @@ function profileFieldControl(name, value, type) {
     return `<input value="${escapeHtml(value)}" disabled>`;
   }
   if (type === "cargo") {
-    return `<select data-profile-field="cargo"><option ${value === "PPF" ? "selected" : ""}>PPF</option></select>`;
+    return `<select data-profile-field="cargo">${CARGOS.map((cargo) => `<option ${value === cargo ? "selected" : ""}>${cargo}</option>`).join("")}</select>`;
   }
   if (type === "lotacao") {
     return `<select data-profile-field="lotacao"><option value="">Selecione</option>${LOTACOES.map((lotacao) => `<option ${value === lotacao ? "selected" : ""}>${lotacao}</option>`).join("")}</select>`;
