@@ -54,6 +54,7 @@ let pendingDelete = null;
 let saveBannerTimer = null;
 let saveSuccessTimer = null;
 let validationClearTargets = [];
+let dailyWorkLimitLastTarget = null;
 let savedTimeValues = {};
 let pendingTimeChanges = new Set();
 let calendarMonthValue = localDateValue().slice(0, 7);
@@ -86,6 +87,8 @@ const LOTACOES = ["PFBRA", "PFCAT", "PFCG", "PFMOS", "PFPV", "SEDE"];
 const CARGOS = ["ESPECIALISTA", "PPF", "TECNICO"];
 const REQUIRED_USER_FIELDS = ["nome", "cpf", "matricula", "cargo", "lotacao"];
 const MONTH_NAMES = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+const DAILY_WORK_LIMIT_MINUTES = 10 * 60;
+const DAILY_WORK_LIMIT_MESSAGE = "Limite de 10 horas diárias ultrapassado";
 const URL_PARAMS = new URLSearchParams(window.location.search);
 const USE_MOCK = URL_PARAMS.get("mock") === "1";
 const MOCK_KEY = "pontoPpfMockDb";
@@ -1046,6 +1049,11 @@ function showValidationPopover(messages) {
   const list = byId("validationList");
   const errors = normalizeValidationItems(messages);
   if (!popover || !list || !errors.length) return;
+  errors.forEach((item) => {
+    if (item.message === DAILY_WORK_LIMIT_MESSAGE && dailyWorkLimitLastTarget) {
+      item.targets = [dailyWorkLimitLastTarget];
+    }
+  });
   validationClearTargets = errors.flatMap((item) => item.targets || []).map(validationTargetElement).filter(Boolean);
   list.innerHTML = errors.map((item) => `<li>${escapeHtml(item.message)}</li>`).join("");
   popover.classList.remove("hidden");
@@ -1074,10 +1082,16 @@ function closeValidationPopover() {
     updateDaySummary();
     updateFillStatusBanner(fillStatusFromCurrentTimes(), selectedWorkDate());
   }
+  if (targets.includes(dailyWorkLimitLastTarget)) dailyWorkLimitLastTarget = null;
 }
 
 function showSaveError(message) {
   showValidationPopover(message);
+}
+
+function showDailyWorkLimitPopover(input) {
+  dailyWorkLimitLastTarget = input || null;
+  showValidationPopover({ message: DAILY_WORK_LIMIT_MESSAGE, targets: [input] });
 }
 
 function showSaveSuccess() {
@@ -1334,6 +1348,14 @@ function updateDaySummary() {
   if (byId("normal")) byId("normal").textContent = formatMinutes(normalMinutes);
   if (byId("extra")) byId("extra").textContent = formatMinutes(extraMinutes);
   if (byId("geccSummary")) byId("geccSummary").textContent = formatMinutes(geccDayMinutes());
+}
+
+function enforceDailyWorkLimit(input) {
+  if (String(input?.value || "").length < 5 || parseTimeMinutes(input.value) === null) return false;
+  const minutes = selectedDailyShift === "noturno" ? geccDayMinutes() : workedDayMinutes();
+  if (minutes <= DAILY_WORK_LIMIT_MINUTES) return false;
+  showDailyWorkLimitPopover(input);
+  return true;
 }
 
 function syncTimeAvailability() {
@@ -1717,6 +1739,7 @@ function bindTimeTracking() {
       updateFillStatusBanner(fillStatusFromCurrentTimes(), selectedWorkDate());
       syncTimeAvailability();
       updateDaySummary();
+      enforceDailyWorkLimit(input);
     });
     input.addEventListener("blur", async () => {
       input.value = formatTime(input.value);
@@ -2522,6 +2545,16 @@ function monthlyFillStatus(data) {
 
 function monthlyWorkedMinutes(data) {
   return pointDataWorkedMinutes(data, { excludeThirdFromWorked: true });
+}
+
+function enforceMonthlyWorkLimit(input, row) {
+  if (String(input?.value || "").length < 5 || parseTimeMinutes(input.value) === null || !row) return false;
+  const data = monthlyRowData(row);
+  const field = input.dataset.monthlyField;
+  const minutes = ["e3", "s3", "e4", "s4"].includes(field) ? monthlyGeccMinutes(data) : monthlyWorkedMinutes(data);
+  if (minutes <= DAILY_WORK_LIMIT_MINUTES) return false;
+  showDailyWorkLimitPopover(input);
+  return true;
 }
 
 function monthlyExtraMinutes(date, data) {
@@ -4114,6 +4147,7 @@ function bindNavigation() {
     if (["e3", "s3", "e4", "s4"].includes(input.dataset.monthlyField)) row.dataset.geccTouched = "1";
     monthlyUpdateRowState(row);
     updateMonthlyTotals();
+    enforceMonthlyWorkLimit(input, row);
   });
   byId("registro-mensal")?.addEventListener("blur", async (event) => {
     const input = event.target.closest(".monthlyTimeInput");
